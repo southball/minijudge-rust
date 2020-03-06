@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use crate::languages::Language;
 use std::ffi::OsString;
+use std::clone::Clone;
 
+#[derive(Clone)]
 pub struct Sandbox {
     pub path: PathBuf,
     pub id: i32,
@@ -18,7 +20,7 @@ impl Sandbox {
 pub struct ExecuteConfig<'a> {
     pub wall_time_limit: f64,
     pub time_limit: f64,
-    pub memory_limit: i32,
+    pub memory_limit: i64,
     pub meta_file: Option<&'a str>,
     pub input_file: Option<&'a str>,
     pub output_file: Option<&'a str>,
@@ -164,6 +166,22 @@ pub fn copy_into(sb: &Sandbox, source: &str, destination: &str) -> Result<(), Bo
     eprintln!("Copy source: {}", source_path);
 
     let destination_pathbuf = sb.path.join("box").join(destination);
+    let destination_path = destination_pathbuf.to_str().unwrap();
+    eprintln!("Copy destination: {}", destination_path);
+
+    std::fs::copy(source_path, destination_path)?;
+    eprintln!("Finished copying {} to {}.", source_path, destination_path);
+
+    Ok(())
+}
+
+/// Copy a file from a sandbox to another or the same sandbox.
+pub fn copy_between(sb_source: &Sandbox, sb_destination: &Sandbox, source: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let source_pathbuf = sb_source.path.join("box").join(source);
+    let source_path = source_pathbuf.to_str().unwrap();
+    eprintln!("Copy source: {}", source_path);
+
+    let destination_pathbuf = sb_destination.path.join("box").join(destination);
     let destination_path = destination_pathbuf.to_str().unwrap();
     eprintln!("Copy destination: {}", destination_path);
 

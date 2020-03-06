@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
-#[derive(Clap)]
+#[derive(Clap, Clone)]
 #[clap(version = "0.0-alpha.1", author = "Southball")]
 pub struct Opts {
     /// The path to a YAML file containing the metadata, including time limit, memory limit,
@@ -32,19 +32,25 @@ pub struct Opts {
     pub testlib: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+fn default_id() -> usize { 0 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Testcase {
+    #[serde(default = "default_id")]
+    pub id: usize,
     pub input: String,
     pub output: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Metadata {
     pub problem_name: String,
     pub time_limit: f64,
-    pub memory_limit: i32,
+    pub memory_limit: i64,
     pub compile_time_limit: f64,
-    pub compile_memory_limit: i32,
+    pub compile_memory_limit: i64,
+    pub checker_time_limit: f64,
+    pub checker_memory_limit: i64,
     pub testcases: Vec<Testcase>,
 }
 
@@ -75,7 +81,11 @@ pub fn read_metadata(metadata_path: &String) -> Result<Metadata, Box<dyn std::er
     eprintln!("Reading metadata from {}...", &metadata_path);
 
     let metadata_file = std::fs::File::open(metadata_path)?;
-    let metadata: Metadata = serde_yaml::from_reader(metadata_file)?;
+    let mut metadata: Metadata = serde_yaml::from_reader(metadata_file)?;
+
+    for (i, testcase) in metadata.testcases.iter_mut().enumerate() {
+        testcase.id = i;
+    }
 
     Ok(metadata)
 }

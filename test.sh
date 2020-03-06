@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cargo run -- \
+sudo /home/jamiechoi/.cargo/bin/cargo run -- \
   --checker ./test/checker.cpp \
   --language cpp17 \
   --metadata ./test/metadata.yml \
