@@ -1,0 +1,10 @@
+problem_name: "A + B Problem"
+time_limit: 1.0
+memory_limit: 256000
+compile_time_limit: 15.0
+compile_memory_limit: 512000
+testcases:
+  - input: "1.in"
+    output: "1.out"
+  - input: "2.in"
+    output: "2.out"
