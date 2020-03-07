@@ -30,10 +30,8 @@ pub struct ExecuteConfig<'a> {
 }
 
 pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>> {
-    eprintln!("Destroying sandbox just in case...");
+    // Ensure that there is no sandbox already created.
     cleanup_sandbox(box_id)?;
-
-    eprintln!("Creating sandbox...");
 
     let box_id_flag = format!("--box-id={}", box_id);
     let process = Command::new("isolate")
@@ -46,7 +44,7 @@ pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>
 
     let sandbox_path = String::from_utf8_lossy(&process.stdout).trim().to_string();
 
-    eprintln!("Sandbox created at {}.", &sandbox_path);
+    log::trace!("Sandbox {} created at {}.", box_id, &sandbox_path);
 
     Ok(Sandbox {
         id: box_id,
@@ -55,8 +53,6 @@ pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>
 }
 
 pub fn cleanup_sandbox(box_id: i32) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("Destroying sandbox...");
-
     let box_id_flag = format!("--box-id={}", box_id);
     let process = Command::new("isolate")
         .args(&[
@@ -67,7 +63,7 @@ pub fn cleanup_sandbox(box_id: i32) -> Result<(), Box<dyn std::error::Error>> {
         .output()?;
 
     assert!(process.status.success(), true);
-    eprintln!("Destroyed successfully.");
+    log::trace!("Sandbox {} destroyed.", box_id);
 
     Ok(())
 }
@@ -133,13 +129,12 @@ pub fn compile<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &Execut
     let flags: Vec<String> = language.compile(source, destination);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
 
-    eprintln!("Compiling {} to {}...", source, destination);
     let output = execute(
         &sb,
         &config,
         &flags_str,
     )?;
-    eprintln!("Compiled {} to {}.", source, destination);
+    log::trace!("Compiled {} [{}] from {}.", destination, language.get_code(), source);
 
     Ok(output)
 }
@@ -147,13 +142,12 @@ pub fn compile<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &Execut
 pub fn run<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.execute(executable);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
-    let output = execute(
+    execute(
         &sb,
         &config,
         &flags_str,
     )?;
-
-    eprintln!("Run output: {}", String::from_utf8_lossy(&output.stdout));
+    log::trace!("Run {} [{}] finished.", executable, language.get_code());
 
     Ok(())
 }
@@ -163,14 +157,12 @@ pub fn run<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteCon
 pub fn copy_into(sb: &Sandbox, source: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source_pathbuf = Path::new(source);
     let source_path = source_pathbuf.to_str().unwrap();
-    eprintln!("Copy source: {}", source_path);
 
     let destination_pathbuf = sb.path.join("box").join(destination);
     let destination_path = destination_pathbuf.to_str().unwrap();
-    eprintln!("Copy destination: {}", destination_path);
 
     std::fs::copy(source_path, destination_path)?;
-    eprintln!("Finished copying {} to {}.", source_path, destination_path);
+    log::trace!("Copied (into sandbox) {} to {}.", source_path, destination_path);
 
     Ok(())
 }
@@ -179,14 +171,12 @@ pub fn copy_into(sb: &Sandbox, source: &str, destination: &str) -> Result<(), Bo
 pub fn copy_between(sb_source: &Sandbox, sb_destination: &Sandbox, source: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
     let source_pathbuf = sb_source.path.join("box").join(source);
     let source_path = source_pathbuf.to_str().unwrap();
-    eprintln!("Copy source: {}", source_path);
 
     let destination_pathbuf = sb_destination.path.join("box").join(destination);
     let destination_path = destination_pathbuf.to_str().unwrap();
-    eprintln!("Copy destination: {}", destination_path);
 
     std::fs::copy(source_path, destination_path)?;
-    eprintln!("Finished copying {} to {}.", source_path, destination_path);
+    log::trace!("Copied (between sandbox) {} to {}.", source_path, destination_path);
 
     Ok(())
 }

@@ -8,9 +8,9 @@ use cli::*;
 use std::path::PathBuf;
 use std::thread;
 use std::sync::{Arc, Mutex};
-use crate::languages::LanguageCpp17;
 use languages::Language;
 use std::borrow::Borrow;
+use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
 
 fn judge_thread(
     thread_id: usize,
@@ -20,18 +20,16 @@ fn judge_thread(
     judge_output: Arc<Mutex<judge::JudgeOutput>>,
     testcases_stack: Arc<Mutex<Vec<Testcase>>>,
 ) {
-    eprintln!("Thread {} spawned.", thread_id);
-    eprintln!("Sandbox path for {} at {}.", thread_id, &thread_sb.path.to_str().unwrap());
+    log::debug!("Thread {} spawned. Sandbox at {}.", thread_id, &thread_sb.path.to_str().unwrap());
 
     let source_language = cli::detect_language(&opts.language);
     let executable_file = source_language.executable_filename();
 
     loop {
-        eprintln!("Finding testcase...");
         let testcase: Option<Testcase> = testcases_stack.lock().unwrap().pop();
 
         if testcase.is_none() {
-            eprintln!("Thread {} ends.", thread_id);
+            log::debug!("Thread {} finds no test cases and terminates.", thread_id);
             break;
         }
 
@@ -39,10 +37,14 @@ fn judge_thread(
         let mut testcase_output: judge::TestcaseOutput =
             judge_output.lock().unwrap().testcases[id].clone();
 
+        log::debug!("Test {} will be processed by thread {}.", id, thread_id);
+
         sandbox::copy_into(
             &thread_sb,
             PathBuf::from(&opts.testcases).join(&input).to_str().unwrap(),
             "in.txt").unwrap();
+
+        log::trace!("Test {} executing.", id);
         sandbox::run::<>(
             &thread_sb,
             &*source_language,
@@ -59,6 +61,7 @@ fn judge_thread(
             },
             &executable_file,
         ).unwrap();
+        log::trace!("Test {} executed.", id);
 
         let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
         let meta = judge::parse_meta(&meta_file);
@@ -69,10 +72,10 @@ fn judge_thread(
 
         testcase_output.sandbox_output = meta_file.clone();
 
-        println!("Test {} output: {}", id, &meta_file);
-
         sandbox::copy_into(&thread_sb, PathBuf::from(&opts.testcases).join(&output).to_str().unwrap(), "ans.txt").unwrap();
         let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
+
+        log::trace!("Test {} checker executing.", id);
         let _checker_output = sandbox::execute(
             &thread_sb,
             &sandbox::ExecuteConfig {
@@ -88,9 +91,9 @@ fn judge_thread(
             },
             &flags,
         ).unwrap();
+        log::trace!("Test {} checker executed.", id);
 
         let checker_output = sandbox::read_file(&thread_sb, "checker.txt").unwrap().trim().to_string();
-        println!("Test {} checker output: {}", id, checker_output);
 
         let meta = judge::apply_checker_output(&meta, &checker_output);
         testcase_output.checker_output = checker_output.clone();
@@ -98,6 +101,7 @@ fn judge_thread(
         if let Some(verdict) = meta.verdict { testcase_output.verdict = verdict.clone(); }
 
         judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
+        log::debug!("Test {} processing completed by thread {}.", id, thread_id);
     }
 }
 
@@ -159,12 +163,19 @@ fn compile_checker<L: Language + ?Sized>(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opts: Opts = Opts::parse();
+    let log_level = cli::get_log_level(opts.verbosity, opts.quiet);
+    CombinedLogger::init(
+        vec![
+            TermLogger::new(log_level, Config::default(), TerminalMode::Mixed).unwrap()
+        ]
+    ).unwrap();
+
     print_opts(&opts);
 
     let metadata = read_metadata(&opts.metadata)?;
     print_metadata(&metadata);
 
-    let sandbox_count: i32 = 16;
+    let sandbox_count: i32 = opts.sandboxes;
     assert!(sandbox_count >= 1);
 
     let mut sandboxes = Vec::new();
@@ -239,10 +250,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut judge_output = judge_output.lock().unwrap();
     judge::calc_overall_verdict(&mut judge_output);
 
-    // TODO support option for outputting verdict to file.
     // Output the overall verdict as YAML.
-    let output = serde_yaml::to_string(&*judge_output)?;
-    println!("{}", output);
+    let output = match &opts.verdict_format[..] {
+        "json" => serde_json::to_string(&*judge_output)?,
+        "yaml" => serde_yaml::to_string(&*judge_output)?,
+        _ => {
+            log::warn!("The verdict format is invalid. Defaulting to json.");
+            serde_json::to_string(&*judge_output)?
+        }
+    };
+
+    // Output the verdict to file if provided. Otherwise, output to standard input.
+    if &opts.verdict != "" {
+        std::fs::write(&opts.verdict, output)?;
+    } else {
+        println!("{}", output);
+    }
 
     Ok(())
 }

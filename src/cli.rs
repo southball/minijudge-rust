@@ -1,6 +1,7 @@
 use clap::Clap;
 use serde::{Serialize, Deserialize};
 use crate::languages;
+use simplelog::LevelFilter;
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
@@ -35,6 +36,22 @@ pub struct Opts {
     /// The number of sandboxes to be created. The sandbox ID is 0-based.
     #[clap(long = "sandboxes")]
     pub sandboxes: i32,
+
+    /// The format of the verdict to output.
+    #[clap(long = "verdict-format", default_value = "json")]
+    pub verdict_format: String,
+
+    /// The file to output the verdict to.
+    #[clap(long = "verdict", default_value = "")]
+    pub verdict: String,
+
+    /// The level of verbosity.
+    #[clap(short = "v", long = "verbose", parse(from_occurrences))]
+    pub verbosity: i32,
+
+    /// Whether the log should be suppressed. This option overrides the verbose option.
+    #[clap(short = "q", long = "quiet")]
+    pub quiet: bool,
 }
 
 fn default_id() -> usize { 0 }
@@ -60,31 +77,29 @@ pub struct Metadata {
 }
 
 pub fn print_opts(opts: &Opts) {
-    eprintln!("Sandboxes: {}", &opts.sandboxes);
-    eprintln!("Metadata:  {}", &opts.metadata);
-    eprintln!("Language:  {}", &opts.language);
-    eprintln!("Checker:   {}", &opts.checker);
-    eprintln!("Source:    {}", &opts.source);
-    eprintln!("Testcases: {}", &opts.testcases);
-    eprintln!("Testlib:   {}", &opts.testlib);
-    eprintln!();
+    log::debug!("Sandboxes: {}", &opts.sandboxes);
+    log::debug!("Metadata:  {}", &opts.metadata);
+    log::debug!("Language:  {}", &opts.language);
+    log::debug!("Checker:   {}", &opts.checker);
+    log::debug!("Source:    {}", &opts.source);
+    log::debug!("Testcases: {}", &opts.testcases);
+    log::debug!("Testlib:   {}", &opts.testlib);
 }
 
 pub fn print_metadata(metadata: &Metadata) {
-    eprintln!("Problem name:         {}", &metadata.problem_name);
-    eprintln!("Time limit:           {}", &metadata.time_limit);
-    eprintln!("Memory limit:         {}", &metadata.memory_limit);
-    eprintln!("Compile time limit:   {}", &metadata.compile_time_limit);
-    eprintln!("Compile memory limit: {}", &metadata.compile_memory_limit);
-    eprintln!("Test cases:");
+    log::debug!("Problem name:         {}", &metadata.problem_name);
+    log::debug!("Time limit:           {}", &metadata.time_limit);
+    log::debug!("Memory limit:         {}", &metadata.memory_limit);
+    log::debug!("Compile time limit:   {}", &metadata.compile_time_limit);
+    log::debug!("Compile memory limit: {}", &metadata.compile_memory_limit);
+    log::debug!("Test cases:");
     for (i, testcase) in metadata.testcases.iter().enumerate() {
-        eprintln!("  {}: {} -> {}", i + 1, testcase.input, testcase.output);
+        log::debug!("  {}: {} -> {}", i + 1, testcase.input, testcase.output);
     }
-    eprintln!();
 }
 
 pub fn read_metadata(metadata_path: &String) -> Result<Metadata, Box<dyn std::error::Error>> {
-    eprintln!("Reading metadata from {}...", &metadata_path);
+    log::debug!("Reading metadata from {}...", &metadata_path);
 
     let metadata_file = std::fs::File::open(metadata_path)?;
     let mut metadata: Metadata = serde_yaml::from_reader(metadata_file)?;
@@ -105,3 +120,16 @@ pub fn detect_language(language: &str) -> Box<dyn languages::Language> {
         }
     }
 }
+
+pub fn get_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
+    match quiet {
+        true => LevelFilter::Off,
+        false => match verbosity {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            _ => LevelFilter::Trace,
+        },
+    }
+}
+

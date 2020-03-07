@@ -44,16 +44,25 @@ fn map_status(raw_status: &str) -> String {
     }
 }
 
-pub fn print_meta(meta: &Meta) {
-    print!("Time: ");
-    if let Some(time) = &meta.time { println!("{}", time); } else { println!(); }
-    print!("Time-wall: ");
-    if let Some(time_wall) = &meta.time_wall { println!("{}", time_wall); } else { println!(); }
-    print!("Memory: ");
-    if let Some(memory) = &meta.memory { println!("{}", memory); } else { println!(); }
-    print!("Verdict: ");
-    if let Some(verdict) = &meta.verdict { println!("{}", verdict); } else { println!(); }
-    println!();
+// This function is for debug purposes.
+#[allow(dead_code)]
+pub fn debug_meta(meta: &Meta) {
+    log::debug!(
+        "Time: {}",
+        if let Some(time) = &meta.time { format!("{}", time) } else { "".to_string() }
+    );
+    log::debug!(
+        "Time-wall: {}",
+        if let Some(time_wall) = &meta.time_wall { format!("{}", time_wall) } else { "".to_string() }
+    );
+    log::debug!(
+        "Memory: {}",
+        if let Some(memory) = &meta.memory { format!("{}", memory) } else { "".to_string() }
+    );
+    log::debug!(
+        "Verdict: {}",
+        if let Some(verdict) = &meta.verdict { format!("{}", verdict) } else { "".to_string() }
+    );
 }
 
 pub fn parse_meta(source: &str) -> Meta {
