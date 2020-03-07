@@ -52,6 +52,11 @@ pub struct Opts {
     /// Whether the log should be suppressed. This option overrides the verbose option.
     #[clap(short = "q", long = "quiet")]
     pub quiet: bool,
+
+    /// Socket to announce updates to. Events are emitted when test cases are completed, and when
+    /// the whole submission is judged.
+    #[clap(long = "socket", default_value = "")]
+    pub socket: String,
 }
 
 fn default_id() -> usize { 0 }
@@ -76,7 +81,7 @@ pub struct Metadata {
     pub testcases: Vec<Testcase>,
 }
 
-pub fn print_opts(opts: &Opts) {
+pub fn debug_opts(opts: &Opts) {
     log::debug!("Sandboxes: {}", &opts.sandboxes);
     log::debug!("Metadata:  {}", &opts.metadata);
     log::debug!("Language:  {}", &opts.language);
@@ -86,7 +91,7 @@ pub fn print_opts(opts: &Opts) {
     log::debug!("Testlib:   {}", &opts.testlib);
 }
 
-pub fn print_metadata(metadata: &Metadata) {
+pub fn debug_metadata(metadata: &Metadata) {
     log::debug!("Problem name:         {}", &metadata.problem_name);
     log::debug!("Time limit:           {}", &metadata.time_limit);
     log::debug!("Memory limit:         {}", &metadata.memory_limit);
@@ -111,17 +116,15 @@ pub fn read_metadata(metadata_path: &String) -> Result<Metadata, Box<dyn std::er
     Ok(metadata)
 }
 
-pub fn detect_language(language: &str) -> Box<dyn languages::Language> {
+pub fn detect_language(language: &str) -> Result<Box<dyn languages::Language>, ()> {
     match language {
-        "cpp17" => Box::new(languages::LanguageCpp17 {}),
-        "python3" => Box::new(languages::LanguagePython3 {}),
-        _ => {
-            panic!("The language detected is not valid.");
-        }
+        "cpp17" => Ok(Box::new(languages::LanguageCpp17 {})),
+        "python3" => Ok(Box::new(languages::LanguagePython3 {})),
+        _ => { Err(()) }
     }
 }
 
-pub fn get_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
+pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
     match quiet {
         true => LevelFilter::Off,
         false => match verbosity {

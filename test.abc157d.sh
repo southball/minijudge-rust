@@ -2,13 +2,13 @@
 
 sudo RUST_BACKTRACE=full $HOME/.cargo/bin/cargo run -- \
   --sandboxes 4 \
-  --checker ./test/checker.cpp \
+  --checker ./test/checker_fp.cpp \
   --language cpp17 \
-  --metadata ./test/metadata.cpp.yml \
-  --source ./test/source.cpp \
-  --testcases ./test/testcases \
+  --metadata ./test/metadata.abc157d.yml \
+  --source ./test/abc157d.cpp \
+  --testcases ./test/abc157d \
   --testlib ./test/testlib.h \
   --verdict-format yaml \
-  --verdict ./verdict.cpp.yml \
+  --verdict ./verdict.abc157d.yml \
   $* \
   1> >(sed $'s,.*,\e[1;33m&\e[m,'>&2);

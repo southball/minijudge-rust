@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sudo $HOME/.cargo/bin/cargo run -- \
+sudo RUST_BACKTRACE=full $HOME/.cargo/bin/cargo run -- \
   --sandboxes 4 \
   --checker ./test/checker.cpp \
   --language python3 \

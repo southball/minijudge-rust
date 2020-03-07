@@ -1,0 +1,155 @@
+---
+verdict: AC
+time: 1.544
+memory: 16096
+testcases:
+  - verdict: AC
+    time: 0.053
+    memory: 7928
+    checker_output: ok 4 numbers
+    sandbox_output: "time:0.053\ntime-wall:0.090\nmax-rss:7928\ncsw-voluntary:7\ncsw-forced:9\ncg-mem:5248\nexitcode:0\n"
+  - verdict: AC
+    time: 0.045
+    memory: 7964
+    checker_output: ok 5 numbers
+    sandbox_output: "time:0.045\ntime-wall:0.087\nmax-rss:7964\ncsw-voluntary:5\ncsw-forced:9\ncg-mem:5124\nexitcode:0\n"
+  - verdict: AC
+    time: 0.049
+    memory: 8772
+    checker_output: ok 10 numbers
+    sandbox_output: "time:0.049\ntime-wall:0.105\nmax-rss:8772\ncsw-voluntary:6\ncsw-forced:20\ncg-mem:6020\nexitcode:0\n"
+  - verdict: AC
+    time: 0.039
+    memory: 7896
+    checker_output: ok 2 numbers
+    sandbox_output: "time:0.039\ntime-wall:0.079\nmax-rss:7896\ncsw-voluntary:5\ncsw-forced:4\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.039
+    memory: 7964
+    checker_output: ok 2 numbers
+    sandbox_output: "time:0.039\ntime-wall:0.126\nmax-rss:7964\ncsw-voluntary:6\ncsw-forced:7\ncg-mem:5276\nexitcode:0\n"
+  - verdict: AC
+    time: 0.624
+    memory: 11684
+    checker_output: ok 60491 numbers
+    sandbox_output: "time:0.624\ntime-wall:0.697\nmax-rss:11684\ncsw-voluntary:6\ncsw-forced:36\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.621
+    memory: 10420
+    checker_output: ok 68210 numbers
+    sandbox_output: "time:0.621\ntime-wall:0.698\nmax-rss:10420\ncsw-voluntary:5\ncsw-forced:56\ncg-mem:7920\nexitcode:0\n"
+  - verdict: AC
+    time: 1.544
+    memory: 14736
+    checker_output: ok 100000 numbers
+    sandbox_output: "time:1.544\ntime-wall:1.636\nmax-rss:14736\ncsw-voluntary:6\ncsw-forced:124\ncg-mem:12664\nexitcode:0\n"
+  - verdict: AC
+    time: 0.945
+    memory: 15504
+    checker_output: ok 100000 numbers
+    sandbox_output: "time:0.945\ntime-wall:1.003\nmax-rss:15504\ncsw-voluntary:5\ncsw-forced:63\ncg-mem:13836\nexitcode:0\n"
+  - verdict: AC
+    time: 0.526
+    memory: 11420
+    checker_output: ok 100000 numbers
+    sandbox_output: "time:0.526\ntime-wall:0.595\nmax-rss:11420\ncsw-voluntary:5\ncsw-forced:49\ncg-mem:9316\nexitcode:0\n"
+  - verdict: AC
+    time: 0.044
+    memory: 7924
+    checker_output: ok 12 numbers
+    sandbox_output: "time:0.044\ntime-wall:0.098\nmax-rss:7924\ncsw-voluntary:4\ncsw-forced:6\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.036
+    memory: 7904
+    checker_output: ok 18 numbers
+    sandbox_output: "time:0.036\ntime-wall:0.078\nmax-rss:7904\ncsw-voluntary:5\ncsw-forced:9\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.042
+    memory: 7880
+    checker_output: ok 14 numbers
+    sandbox_output: "time:0.042\ntime-wall:0.093\nmax-rss:7880\ncsw-voluntary:5\ncsw-forced:7\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.038
+    memory: 7968
+    checker_output: ok 17 numbers
+    sandbox_output: "time:0.038\ntime-wall:0.097\nmax-rss:7968\ncsw-voluntary:5\ncsw-forced:8\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.043
+    memory: 7972
+    checker_output: ok 15 numbers
+    sandbox_output: "time:0.043\ntime-wall:0.101\nmax-rss:7972\ncsw-voluntary:5\ncsw-forced:5\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.031
+    memory: 8000
+    checker_output: ok 7 numbers
+    sandbox_output: "time:0.031\ntime-wall:0.097\nmax-rss:8000\ncsw-voluntary:5\ncsw-forced:5\ncg-mem:13836\nexitcode:0\n"
+  - verdict: AC
+    time: 0.041
+    memory: 7924
+    checker_output: ok 5 numbers
+    sandbox_output: "time:0.041\ntime-wall:0.078\nmax-rss:7924\ncsw-voluntary:5\ncsw-forced:7\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.029
+    memory: 8304
+    checker_output: ok 13 numbers
+    sandbox_output: "time:0.029\ntime-wall:0.094\nmax-rss:8304\ncsw-voluntary:5\ncsw-forced:4\ncg-mem:13836\nexitcode:0\n"
+  - verdict: AC
+    time: 0.027
+    memory: 8224
+    checker_output: ok 18 numbers
+    sandbox_output: "time:0.027\ntime-wall:0.066\nmax-rss:8224\ncsw-voluntary:4\ncsw-forced:3\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.024
+    memory: 8032
+    checker_output: ok 14 numbers
+    sandbox_output: "time:0.024\ntime-wall:0.065\nmax-rss:8032\ncsw-voluntary:5\ncsw-forced:8\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.734
+    memory: 12976
+    checker_output: ok 63242 numbers
+    sandbox_output: "time:0.734\ntime-wall:0.791\nmax-rss:12976\ncsw-voluntary:6\ncsw-forced:45\ncg-mem:10700\nexitcode:0\n"
+  - verdict: AC
+    time: 0.779
+    memory: 14428
+    checker_output: ok 74747 numbers
+    sandbox_output: "time:0.779\ntime-wall:0.834\nmax-rss:14428\ncsw-voluntary:6\ncsw-forced:54\ncg-mem:13836\nexitcode:0\n"
+  - verdict: AC
+    time: 0.718
+    memory: 13844
+    checker_output: ok 62203 numbers
+    sandbox_output: "time:0.718\ntime-wall:0.759\nmax-rss:13844\ncsw-voluntary:5\ncsw-forced:30\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.868
+    memory: 13456
+    checker_output: ok 85776 numbers
+    sandbox_output: "time:0.868\ntime-wall:0.914\nmax-rss:13456\ncsw-voluntary:6\ncsw-forced:67\ncg-mem:12664\nexitcode:0\n"
+  - verdict: AC
+    time: 0.411
+    memory: 13396
+    checker_output: ok 66614 numbers
+    sandbox_output: "time:0.411\ntime-wall:0.467\nmax-rss:13396\ncsw-voluntary:5\ncsw-forced:35\ncg-mem:11128\nexitcode:0\n"
+  - verdict: AC
+    time: 0.417
+    memory: 13324
+    checker_output: ok 77435 numbers
+    sandbox_output: "time:0.417\ntime-wall:0.461\nmax-rss:13324\ncsw-voluntary:5\ncsw-forced:38\ncg-mem:163480\nexitcode:0\n"
+  - verdict: AC
+    time: 0.393
+    memory: 13024
+    checker_output: ok 60806 numbers
+    sandbox_output: "time:0.393\ntime-wall:0.448\nmax-rss:13024\ncsw-voluntary:5\ncsw-forced:38\ncg-mem:13836\nexitcode:0\n"
+  - verdict: AC
+    time: 0.462
+    memory: 13776
+    checker_output: ok 59745 numbers
+    sandbox_output: "time:0.462\ntime-wall:0.502\nmax-rss:13776\ncsw-voluntary:5\ncsw-forced:23\ncg-mem:12664\nexitcode:0\n"
+  - verdict: AC
+    time: 0.479
+    memory: 15132
+    checker_output: ok 97429 numbers
+    sandbox_output: "time:0.479\ntime-wall:0.512\nmax-rss:15132\ncsw-voluntary:5\ncsw-forced:14\ncg-mem:13000\nexitcode:0\n"
+  - verdict: AC
+    time: 0.535
+    memory: 16096
+    checker_output: ok 100000 numbers
+    sandbox_output: "time:0.535\ntime-wall:0.587\nmax-rss:16096\ncsw-voluntary:5\ncsw-forced:20\ncg-mem:13860\nexitcode:0\n"

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo $HOME/.cargo/bin/cargo run -- $*
+sudo RUST_BACKTRACE=1 $HOME/.cargo/bin/cargo run -- $*
