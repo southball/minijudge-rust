@@ -9,8 +9,153 @@ use std::path::PathBuf;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use crate::languages::LanguageCpp17;
-use std::ops::Deref;
-use std::convert::TryInto;
+use languages::Language;
+use std::borrow::Borrow;
+
+fn judge_thread(
+    thread_id: usize,
+    thread_sb: sandbox::Sandbox,
+    opts: Opts,
+    metadata: Metadata,
+    judge_output: Arc<Mutex<judge::JudgeOutput>>,
+    testcases_stack: Arc<Mutex<Vec<Testcase>>>,
+) {
+    eprintln!("Thread {} spawned.", thread_id);
+    eprintln!("Sandbox path for {} at {}.", thread_id, &thread_sb.path.to_str().unwrap());
+
+    let source_language = cli::detect_language(&opts.language);
+    let executable_file = source_language.executable_filename();
+
+    loop {
+        eprintln!("Finding testcase...");
+        let testcase: Option<Testcase> = testcases_stack.lock().unwrap().pop();
+
+        if testcase.is_none() {
+            eprintln!("Thread {} ends.", thread_id);
+            break;
+        }
+
+        let Testcase { id, input, output } = testcase.unwrap();
+        let mut testcase_output: judge::TestcaseOutput =
+            judge_output.lock().unwrap().testcases[id].clone();
+
+        sandbox::copy_into(
+            &thread_sb,
+            PathBuf::from(&opts.testcases).join(&input).to_str().unwrap(),
+            "in.txt").unwrap();
+        sandbox::run::<>(
+            &thread_sb,
+            &*source_language,
+            &sandbox::ExecuteConfig {
+                memory_limit: metadata.memory_limit,
+                time_limit: metadata.time_limit,
+                wall_time_limit: metadata.time_limit,
+                meta_file: Some("meta.txt"),
+                full_env: false,
+                unlimited_processes: false,
+                input_file: Some("in.txt"),
+                output_file: Some("out.txt"),
+                error_file: None,
+            },
+            &executable_file,
+        ).unwrap();
+
+        let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
+        let meta = judge::parse_meta(&meta_file);
+
+        if let Some(time) = &meta.time { testcase_output.time = *time; }
+        if let Some(memory) = &meta.memory { testcase_output.memory = *memory; }
+        if let Some(verdict) = &meta.verdict { testcase_output.verdict = verdict.clone(); }
+
+        testcase_output.sandbox_output = meta_file.clone();
+
+        println!("Test {} output: {}", id, &meta_file);
+
+        sandbox::copy_into(&thread_sb, PathBuf::from(&opts.testcases).join(&output).to_str().unwrap(), "ans.txt").unwrap();
+        let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
+        let _checker_output = sandbox::execute(
+            &thread_sb,
+            &sandbox::ExecuteConfig {
+                memory_limit: metadata.checker_memory_limit,
+                time_limit: metadata.checker_time_limit,
+                wall_time_limit: metadata.checker_time_limit,
+                meta_file: None,
+                full_env: false,
+                unlimited_processes: false,
+                input_file: None,
+                output_file: None,
+                error_file: Some("checker.txt"),
+            },
+            &flags,
+        ).unwrap();
+
+        let checker_output = sandbox::read_file(&thread_sb, "checker.txt").unwrap().trim().to_string();
+        println!("Test {} checker output: {}", id, checker_output);
+
+        let meta = judge::apply_checker_output(&meta, &checker_output);
+        testcase_output.checker_output = checker_output.clone();
+
+        if let Some(verdict) = meta.verdict { testcase_output.verdict = verdict.clone(); }
+
+        judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
+    }
+}
+
+fn compile_source<L: Language + ?Sized>(
+    sb: &sandbox::Sandbox,
+    language: &L,
+    metadata: &Metadata,
+    source: &str,
+    destination: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    sandbox::compile::<L>(
+        sb,
+        language,
+        &sandbox::ExecuteConfig {
+            memory_limit: metadata.compile_memory_limit,
+            time_limit: metadata.compile_time_limit,
+            wall_time_limit: metadata.compile_time_limit,
+            meta_file: None,
+            full_env: true,
+            unlimited_processes: true,
+            input_file: None,
+            output_file: None,
+            error_file: None,
+        },
+        source,
+        destination,
+    )?;
+
+    Ok(())
+}
+
+fn compile_checker<L: Language + ?Sized>(
+    sb: &sandbox::Sandbox,
+    language: &L,
+    metadata: &Metadata,
+    source: &str,
+    destination: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    sandbox::compile::<L>(
+        sb,
+        language,
+        &sandbox::ExecuteConfig {
+            memory_limit: metadata.compile_memory_limit,
+            time_limit: metadata.compile_time_limit,
+            wall_time_limit: metadata.compile_time_limit,
+            meta_file: None,
+            full_env: true,
+            unlimited_processes: true,
+            input_file: None,
+            output_file: None,
+            error_file: None,
+        },
+        source,
+        destination,
+    )?;
+
+    Ok(())
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opts: Opts = Opts::parse();
@@ -28,51 +173,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sandboxes.push(sandbox::create_sandbox(i)?);
     }
 
-    let sb = &sandboxes[0];
+    let sandbox_primary = &sandboxes[0];
 
-    sandbox::copy_into(sb, &opts.source, "./source.cpp")?;
-    sandbox::compile::<LanguageCpp17>(
-        sb,
-        &sandbox::ExecuteConfig {
-            memory_limit: metadata.compile_memory_limit,
-            time_limit: metadata.compile_time_limit,
-            wall_time_limit: metadata.compile_time_limit,
-            meta_file: None,
-            full_env: true,
-            unlimited_processes: true,
-            input_file: None,
-            output_file: None,
-            error_file: None,
-        },
-        "source.cpp",
-        "program",
-    )?;
+    let source_language = cli::detect_language(&opts.language);
+    let source_file = source_language.source_filename();
+    let executable_file = source_language.executable_filename();
 
-    sandbox::copy_into(sb, &opts.testlib, "./testlib.h")?;
-    sandbox::copy_into(sb, &opts.checker, "./checker.cpp")?;
-    sandbox::compile::<LanguageCpp17>(
-        sb,
-        &sandbox::ExecuteConfig {
-            memory_limit: metadata.compile_memory_limit,
-            time_limit: metadata.compile_time_limit,
-            wall_time_limit: metadata.compile_time_limit,
-            meta_file: None,
-            full_env: true,
-            unlimited_processes: true,
-            input_file: None,
-            output_file: None,
-            error_file: None,
-        },
-        "checker.cpp",
-        "checker",
-    )?;
+    sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
+    compile_source::<>(sandbox_primary, &*source_language, &metadata, &source_file, &executable_file)?;
 
+    sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
+    sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
+    compile_checker::<>(sandbox_primary, languages::LanguageCpp17 {}.borrow(), &metadata, "checker.cpp", "checker")?;
+
+    // Copy the compiled binaries to other sandboxes.
     for sb_sub in sandboxes.iter().skip(1) {
-        sandbox::copy_between(&sb, &sb_sub, "checker", "checker")?;
-        sandbox::copy_between(&sb, &sb_sub, "program", "program")?;
+        sandbox::copy_between(&sandbox_primary, &sb_sub, "checker", "checker")?;
+        sandbox::copy_between(&sandbox_primary, &sb_sub, &executable_file, &executable_file)?;
     }
 
-    let testcases: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(metadata.testcases.clone()));
+    let testcases_stack: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(
+        metadata.testcases.clone().into_iter().rev().collect::<Vec<Testcase>>()
+    ));
+
     let judge_output: Arc<Mutex<judge::JudgeOutput>> = Arc::new(Mutex::new(judge::JudgeOutput {
         verdict: judge::VERDICT_WJ.to_string(),
         time: 0.0,
@@ -86,116 +209,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }; metadata.testcases.len()],
     }));
 
-    testcases.lock().unwrap().reverse();
-
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-    for (thread_id, thread_sb) in sandboxes.into_iter().enumerate() {
+    for (thread_id, thread_sb) in sandboxes.iter().enumerate() {
         let thread_id = thread_id;
-        let testcases = testcases.clone();
+        let thread_sb = thread_sb.clone();
         let opts = opts.clone();
         let metadata = metadata.clone();
         let judge_output = judge_output.clone();
+        let testcases_stack = testcases_stack.clone();
 
         let thread = thread::spawn(move || {
-            eprintln!("Thread {} spawned.", thread_id);
-            eprintln!("Sandbox path for {} at {}.", thread_id, &thread_sb.path.to_str().unwrap());
-
-            loop {
-                eprintln!("Finding testcase...");
-                let mut testcase: Option<Testcase> =
-                    testcases.lock().unwrap().pop();
-
-                if testcase.is_none() {
-                    eprintln!("Thread {} ends.", thread_id);
-                    break;
-                }
-
-                let Testcase { id, input, output } = testcase.unwrap();
-                let mut testcase_output: judge::TestcaseOutput =
-                    judge_output.lock().unwrap().testcases[id].clone();
-
-                sandbox::copy_into(
-                    &thread_sb,
-                    PathBuf::from(&opts.testcases).join(&input).to_str().unwrap(),
-                    "in.txt").unwrap();
-                sandbox::run::<LanguageCpp17>(
-                    &thread_sb,
-                    &sandbox::ExecuteConfig {
-                        memory_limit: metadata.memory_limit,
-                        time_limit: metadata.time_limit,
-                        wall_time_limit: metadata.time_limit,
-                        meta_file: Some("meta.txt"),
-                        full_env: false,
-                        unlimited_processes: false,
-                        input_file: Some("in.txt"),
-                        output_file: Some("out.txt"),
-                        error_file: None,
-                    },
-                    "program",
-                ).unwrap();
-
-                let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
-                let meta = judge::parse_meta(&meta_file);
-
-                if let Some(time) = &meta.time { testcase_output.time = *time; }
-                if let Some(memory) = &meta.memory { testcase_output.memory = *memory; }
-                if let Some(verdict) = &meta.verdict { testcase_output.verdict = verdict.clone(); }
-
-                testcase_output.sandbox_output = meta_file.clone();
-
-                println!("Test {} output: {}", id, &meta_file);
-
-                sandbox::copy_into(&thread_sb, PathBuf::from(&opts.testcases).join(&output).to_str().unwrap(), "ans.txt").unwrap();
-                let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
-                let output = sandbox::execute(
-                    &thread_sb,
-                    &sandbox::ExecuteConfig {
-                        memory_limit: metadata.checker_memory_limit,
-                        time_limit: metadata.checker_time_limit,
-                        wall_time_limit: metadata.checker_time_limit,
-                        meta_file: None,
-                        full_env: false,
-                        unlimited_processes: false,
-                        input_file: None,
-                        output_file: None,
-                        error_file: Some("checker.txt"),
-                    },
-                    &flags,
-                ).unwrap();
-
-                let checker_output = sandbox::read_file(&thread_sb, "checker.txt").unwrap().trim().to_string();
-                println!("Test {} checker output: {}", id, checker_output);
-
-                let meta = judge::apply_checker_output(&meta, &checker_output);
-                testcase_output.checker_output = checker_output.clone();
-
-                if let Some(verdict) = meta.verdict { testcase_output.verdict = verdict.clone(); }
-
-                judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
-            }
+            judge_thread(
+                thread_id,
+                thread_sb,
+                opts,
+                metadata,
+                judge_output,
+                testcases_stack,
+            );
         });
 
         threads.push(thread);
     }
 
-    for thread in threads {
-        thread.join();
-    }
+    // Wait for all threads to finish.
+    for thread in threads { thread.join().unwrap(); }
 
     // Compute overall verdict, time and memory
     let mut judge_output = judge_output.lock().unwrap();
-    judge_output.time = judge_output.testcases.iter().map(|t| t.time).fold(-1. / 0., f64::max);
-    judge_output.memory = judge_output.testcases.iter().map(|t| t.memory).fold(i64::MIN, i64::max);
-    judge_output.verdict =
-        match judge_output.testcases.iter()
-            .map(|t| &t.verdict)
-            .filter(|v| &v[..] != judge::VERDICT_AC)
-            .nth(0)
-        {
-            Some(v) => v.clone(),
-            None => judge::VERDICT_AC.to_string()
-        };
+    judge::calc_overall_verdict(&mut judge_output);
 
+    // TODO support option for outputting verdict to file.
+    // Output the overall verdict as YAML.
     let output = serde_yaml::to_string(&*judge_output)?;
     println!("{}", output);
 

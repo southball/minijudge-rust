@@ -29,9 +29,9 @@ pub struct JudgeOutput {
 #[derive(Clone)]
 pub struct Meta {
     pub time: Option<f64>,
-    pub timeWall: Option<f64>,
+    pub time_wall: Option<f64>,
     pub memory: Option<i64>,
-    pub exitCode: Option<i64>,
+    pub exit_code: Option<i64>,
     pub verdict: Option<String>,
 }
 
@@ -48,7 +48,7 @@ pub fn print_meta(meta: &Meta) {
     print!("Time: ");
     if let Some(time) = &meta.time { println!("{}", time); } else { println!(); }
     print!("Time-wall: ");
-    if let Some(time_wall) = &meta.timeWall { println!("{}", time_wall); } else { println!(); }
+    if let Some(time_wall) = &meta.time_wall { println!("{}", time_wall); } else { println!(); }
     print!("Memory: ");
     if let Some(memory) = &meta.memory { println!("{}", memory); } else { println!(); }
     print!("Verdict: ");
@@ -59,10 +59,10 @@ pub fn print_meta(meta: &Meta) {
 pub fn parse_meta(source: &str) -> Meta {
     let mut meta = Meta {
         time: None,
-        timeWall: None,
+        time_wall: None,
         memory: None,
         verdict: None,
-        exitCode: None,
+        exit_code: None,
     };
 
     let lines: Vec<&str> = source.split('\n').collect();
@@ -75,9 +75,9 @@ pub fn parse_meta(source: &str) -> Meta {
 
             match key {
                 "time" => { if let Ok(v) = value.parse::<f64>() { meta.time = Some(v); } },
-                "time-wall" => { if let Ok(v) = value.parse::<f64>() { meta.timeWall = Some(v); } },
+                "time-wall" => { if let Ok(v) = value.parse::<f64>() { meta.time_wall = Some(v); } },
                 "max-rss" => { if let Ok(v) = value.parse::<i64>() { meta.memory = Some(v); } },
-                "exitcode" => { if let Ok(v) = value.parse::<i64>() { meta.exitCode = Some(v); } }
+                "exitcode" => { if let Ok(v) = value.parse::<i64>() { meta.exit_code = Some(v); } }
                 "status" => { meta.verdict = Some(map_status(value)); },
                 _ => {},
             };
@@ -99,4 +99,18 @@ pub fn apply_checker_output(meta: &Meta, checker_output: &str) -> Meta {
     }
 
     meta
+}
+
+pub fn calc_overall_verdict(judge_output: &mut JudgeOutput) {
+    judge_output.time = judge_output.testcases.iter().map(|t| t.time).fold(-1. / 0., f64::max);
+    judge_output.memory = judge_output.testcases.iter().map(|t| t.memory).fold(i64::MIN, i64::max);
+    judge_output.verdict =
+        match judge_output.testcases.iter()
+            .map(|t| &t.verdict)
+            .filter(|v| &v[..] != VERDICT_AC)
+            .nth(0)
+        {
+            Some(v) => v.clone(),
+            None => VERDICT_AC.to_string()
+        };
 }

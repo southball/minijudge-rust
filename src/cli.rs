@@ -1,5 +1,6 @@
 use clap::Clap;
 use serde::{Serialize, Deserialize};
+use crate::languages;
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
@@ -30,6 +31,10 @@ pub struct Opts {
     /// The path to testlib.h.
     #[clap(long = "testlib")]
     pub testlib: String,
+
+    /// The number of sandboxes to be created. The sandbox ID is 0-based.
+    #[clap(long = "sandboxes")]
+    pub sandboxes: i32,
 }
 
 fn default_id() -> usize { 0 }
@@ -55,6 +60,7 @@ pub struct Metadata {
 }
 
 pub fn print_opts(opts: &Opts) {
+    eprintln!("Sandboxes: {}", &opts.sandboxes);
     eprintln!("Metadata:  {}", &opts.metadata);
     eprintln!("Language:  {}", &opts.language);
     eprintln!("Checker:   {}", &opts.checker);
@@ -88,4 +94,14 @@ pub fn read_metadata(metadata_path: &String) -> Result<Metadata, Box<dyn std::er
     }
 
     Ok(metadata)
+}
+
+pub fn detect_language(language: &str) -> Box<dyn languages::Language> {
+    match language {
+        "cpp17" => Box::new(languages::LanguageCpp17 {}),
+        "python3" => Box::new(languages::LanguagePython3 {}),
+        _ => {
+            panic!("The language detected is not valid.");
+        }
+    }
 }

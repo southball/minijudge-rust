@@ -129,8 +129,8 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &Vec<&str>) -> Res
     Ok(output)
 }
 
-pub fn compile<L: Language>(sb: &Sandbox, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
-    let flags: Vec<String> = L::compile(source, destination);
+pub fn compile<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+    let flags: Vec<String> = language.compile(source, destination);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
 
     eprintln!("Compiling {} to {}...", source, destination);
@@ -144,8 +144,8 @@ pub fn compile<L: Language>(sb: &Sandbox, config: &ExecuteConfig, source: &str, 
     Ok(output)
 }
 
-pub fn run<L: Language>(sb: &Sandbox, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let flags: Vec<String> = L::execute(executable);
+pub fn run<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let flags: Vec<String> = language.execute(executable);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
     let output = execute(
         &sb,
