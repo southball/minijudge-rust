@@ -42,8 +42,8 @@ pub struct Opts {
     pub verdict_format: String,
 
     /// The file to output the verdict to.
-    #[clap(long = "verdict", default_value = "")]
-    pub verdict: String,
+    #[clap(long = "verdict")]
+    pub verdict: Option<String>,
 
     /// The level of verbosity.
     #[clap(short = "v", long = "verbose", parse(from_occurrences))]
@@ -55,8 +55,8 @@ pub struct Opts {
 
     /// Socket to announce updates to. Events are emitted when test cases are completed, and when
     /// the whole submission is judged.
-    #[clap(long = "socket", default_value = "")]
-    pub socket: String,
+    #[clap(long = "socket")]
+    pub socket: Option<String>,
 }
 
 fn default_id() -> usize { 0 }

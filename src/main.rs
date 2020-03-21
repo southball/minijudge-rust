@@ -27,11 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug_opts(&opts);
 
-    let socket: Option<Arc<Mutex<zmq::Socket>>> = if &opts.socket != "" {
+    let socket: Option<Arc<Mutex<zmq::Socket>>> = if let Some(socket) = &opts.socket {
         let context = zmq::Context::new();
         let responder = context.socket(zmq::PUB).unwrap();
         responder.set_sndhwm(1_100_100).expect("Failed setting hwm.");
-        responder.bind(&opts.socket).expect("Failed binding publisher.");
+        responder.bind(socket).expect("Failed binding publisher.");
         Some(Arc::new(Mutex::new(responder)))
     } else {
         None
@@ -131,8 +131,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Output the verdict to file if provided. Otherwise, output to standard input.
-    if &opts.verdict != "" {
-        std::fs::write(&opts.verdict, output)?;
+    if let Some(verdict_file) = &opts.verdict {
+        std::fs::write(verdict_file, output)?;
     } else {
         println!("{}", output);
     }
