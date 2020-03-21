@@ -16,19 +16,19 @@ impl Language for LanguageCpp17 {
     fn get_code(&self) -> String { "cpp17".to_string() }
 
     fn compile<'a>(&self, source: &'a str, destination: &'a str) -> Vec<String> {
-        return vec![
+        vec![
             "/usr/bin/g++",
             "--std=c++17",
             "-o",
             destination,
             source
-        ].iter().map(|s| String::from(*s)).collect();
+        ].iter().map(|s| String::from(*s)).collect()
     }
 
     fn execute<'a>(&self, executable: &'a str) -> Vec<String> {
-        return vec![
+        vec![
             executable,
-        ].iter().map(|s| String::from(*s)).collect();
+        ].iter().map(|s| String::from(*s)).collect()
     }
 }
 
@@ -38,17 +38,17 @@ impl Language for LanguagePython3 {
     fn get_code(&self) -> String { "python3".to_string() }
 
     fn compile<'a>(&self, source: &'a str, destination: &'a str) -> Vec<String> {
-        return vec![
+        vec![
             "/usr/bin/cp",
             source,
             destination,
-        ].iter().map(|s| String::from(*s)).collect();
+        ].iter().map(|s| String::from(*s)).collect()
     }
 
     fn execute<'a>(&self, executable: &'a str) -> Vec<String> {
-        return vec![
+        vec![
             "/usr/bin/python3",
             executable
-        ].iter().map(|s| String::from(*s)).collect();
+        ].iter().map(|s| String::from(*s)).collect()
     }
 }

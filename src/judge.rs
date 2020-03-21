@@ -1,30 +1,7 @@
 use std::clone::Clone;
-use serde::{Serialize, Deserialize};
 
-pub const VERDICT_AC: &'static str = "AC";
-pub const VERDICT_WA: &'static str = "WA";
-pub const VERDICT_MLE: &'static str = "MLE";
-pub const VERDICT_TLE: &'static str = "TLE";
-pub const VERDICT_RE: &'static str = "RE";
-pub const VERDICT_WJ: &'static str = "WJ";
-pub const VERDICT_SE: &'static str = "SE";
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct TestcaseOutput {
-    pub verdict: String,
-    pub time: f64,
-    pub memory: i64,
-    pub checker_output: String,
-    pub sandbox_output: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct JudgeOutput {
-    pub verdict: String,
-    pub time: f64,
-    pub memory: i64,
-    pub testcases: Vec<TestcaseOutput>,
-}
+pub use judge_definitions::*;
+pub use judge_definitions::verdicts::*;
 
 #[derive(Clone)]
 pub struct Meta {
@@ -61,7 +38,7 @@ pub fn debug_meta(meta: &Meta) {
     );
     log::debug!(
         "Verdict: {}",
-        if let Some(verdict) = &meta.verdict { format!("{}", verdict) } else { "".to_string() }
+        if let Some(verdict) = &meta.verdict { verdict.to_string() } else { "".to_string() }
     );
 }
 
@@ -99,7 +76,7 @@ pub fn parse_meta(source: &str) -> Meta {
 pub fn apply_checker_output(meta: &Meta, checker_output: &str) -> Meta {
     let mut meta = meta.clone();
 
-    if let None = meta.verdict {
+    if meta.verdict.is_none() {
         if checker_output.starts_with("ok") {
             meta.verdict = Some(VERDICT_AC.to_string());
         } else {
@@ -112,12 +89,11 @@ pub fn apply_checker_output(meta: &Meta, checker_output: &str) -> Meta {
 
 pub fn calc_overall_verdict(judge_output: &mut JudgeOutput) {
     judge_output.time = judge_output.testcases.iter().map(|t| t.time).fold(-1. / 0., f64::max);
-    judge_output.memory = judge_output.testcases.iter().map(|t| t.memory).fold(i64::MIN, i64::max);
+    judge_output.memory = judge_output.testcases.iter().map(|t| t.memory).fold(std::i64::MIN, i64::max);
     judge_output.verdict =
         match judge_output.testcases.iter()
             .map(|t| &t.verdict)
-            .filter(|v| &v[..] != VERDICT_AC)
-            .nth(0)
+            .find(|v| &v[..] != VERDICT_AC)
         {
             Some(v) => v.clone(),
             None => VERDICT_AC.to_string()

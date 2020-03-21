@@ -6,9 +6,10 @@ edition = "2018"
 
 [dependencies]
 clap = { git = "https://github.com/clap-rs/clap/" }
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8"
-serde_json = "1.0"
+judge-definitions = { git = "https://github.com/southball/judge-definitions" }
 log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
 simplelog = "0.7.4"
 zmq = "0.9"

@@ -68,7 +68,7 @@ pub fn cleanup_sandbox(box_id: i32) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &Vec<&str>) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     let box_id_flag = format!("--box-id={}", sb.id);
     let wall_time_flag = format!("--wall-time={}", config.wall_time_limit);
     let time_flag = format!("--time={}", config.time_limit);

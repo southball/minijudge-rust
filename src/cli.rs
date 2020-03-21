@@ -103,7 +103,7 @@ pub fn debug_metadata(metadata: &Metadata) {
     }
 }
 
-pub fn read_metadata(metadata_path: &String) -> Result<Metadata, Box<dyn std::error::Error>> {
+pub fn read_metadata(metadata_path: &str) -> Result<Metadata, Box<dyn std::error::Error>> {
     log::debug!("Reading metadata from {}...", &metadata_path);
 
     let metadata_file = std::fs::File::open(metadata_path)?;
@@ -125,14 +125,15 @@ pub fn detect_language(language: &str) -> Result<Box<dyn languages::Language>, (
 }
 
 pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
-    match quiet {
-        true => LevelFilter::Off,
-        false => match verbosity {
+    if quiet {
+        LevelFilter::Off
+    } else {
+        match verbosity {
             0 => LevelFilter::Warn,
             1 => LevelFilter::Info,
             2 => LevelFilter::Debug,
             _ => LevelFilter::Trace,
-        },
+        }
     }
 }
 

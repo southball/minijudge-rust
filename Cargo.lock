@@ -203,6 +203,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8b7a7c0c47db5545ed3fef7468ee7bb5b74691498139e4b3f6a20685dc6dd8e"
 
 [[package]]
+name = "judge-definitions"
+version = "0.1.0"
+source = "git+https://github.com/southball/judge-definitions#1b9ecde13a4281541ea6b3a534813f170eec1f33"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -245,6 +253,7 @@ name = "minijudge-rust"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "judge-definitions",
  "log",
  "serde",
  "serde_json",
