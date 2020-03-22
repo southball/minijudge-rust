@@ -1,54 +1,39 @@
-pub trait Language {
-    fn source_filename(&self) -> String;
-    fn executable_filename(&self) -> String;
-    /// Returns a code for display.
-    fn get_code(&self) -> String;
-    fn compile<'a>(&self, source: &'a str, destination: &'a str) -> Vec<String>;
-    fn execute<'a>(&self, executable: &'a str) -> Vec<String>;
+use serde::{Serialize, Deserialize};
+use handlebars::Handlebars;
+use std::collections::BTreeMap;
+
+#[derive(Serialize, Deserialize)]
+pub struct DynLanguage {
+    pub source_filename: String,
+    pub executable_filename: String,
+    pub code: String,
+    pub compile_command: Vec<String>,
+    pub execute_command: Vec<String>,
+    pub compile_flags: Option<Vec<String>>,
+    pub execute_flags: Option<Vec<String>>,
 }
 
-pub struct LanguageCpp17 {}
-pub struct LanguagePython3 {}
+impl DynLanguage {
+    pub fn compile(&self, source: &str, destination: &str) -> Vec<String> {
+        let template_engine = Handlebars::new();
+        let mut map = BTreeMap::new();
+        map.insert("source", source);
+        map.insert("destination", destination);
 
-impl Language for LanguageCpp17 {
-    fn source_filename(&self) -> String { "source.cpp".to_string() }
-    fn executable_filename(&self) -> String { "program".to_string() }
-    fn get_code(&self) -> String { "cpp17".to_string() }
-
-    fn compile<'a>(&self, source: &'a str, destination: &'a str) -> Vec<String> {
-        vec![
-            "/usr/bin/g++",
-            "--std=c++17",
-            "-o",
-            destination,
-            source
-        ].iter().map(|s| String::from(*s)).collect()
+        return self.compile_command
+            .iter()
+            .map(|s| template_engine.render_template(s, &map).unwrap())
+            .collect::<>();
     }
 
-    fn execute<'a>(&self, executable: &'a str) -> Vec<String> {
-        vec![
-            executable,
-        ].iter().map(|s| String::from(*s)).collect()
-    }
-}
+    pub fn execute(&self, executable: &str) -> Vec<String> {
+        let template_engine = Handlebars::new();
+        let mut map = BTreeMap::new();
+        map.insert("executable", executable);
 
-impl Language for LanguagePython3 {
-    fn source_filename(&self) -> String { "source.py".to_string() }
-    fn executable_filename(&self) -> String { "program.py".to_string() }
-    fn get_code(&self) -> String { "python3".to_string() }
-
-    fn compile<'a>(&self, source: &'a str, destination: &'a str) -> Vec<String> {
-        vec![
-            "/usr/bin/cp",
-            source,
-            destination,
-        ].iter().map(|s| String::from(*s)).collect()
-    }
-
-    fn execute<'a>(&self, executable: &'a str) -> Vec<String> {
-        vec![
-            "/usr/bin/python3",
-            executable
-        ].iter().map(|s| String::from(*s)).collect()
+        return self.execute_command
+            .iter()
+            .map(|s| template_engine.render_template(s, &map).unwrap())
+            .collect::<>();
     }
 }

@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::languages::Language;
+use crate::languages::DynLanguage;
 use std::ffi::OsString;
 use std::clone::Clone;
+use std::default::Default;
 
 #[derive(Clone)]
 pub struct Sandbox {
@@ -17,6 +18,7 @@ impl Sandbox {
     }
 }
 
+#[derive(Clone)]
 pub struct ExecuteConfig<'a> {
     pub wall_time_limit: f64,
     pub time_limit: f64,
@@ -27,6 +29,24 @@ pub struct ExecuteConfig<'a> {
     pub error_file: Option<&'a str>,
     pub full_env: bool,
     pub unlimited_processes: bool,
+    pub additional_flags: Option<Vec<&'a str>>,
+}
+
+impl Default for ExecuteConfig<'_> {
+    fn default() -> ExecuteConfig<'static> {
+        ExecuteConfig {
+            wall_time_limit: 0.,
+            time_limit: 0.,
+            memory_limit: 0,
+            meta_file: None,
+            input_file: None,
+            output_file: None,
+            error_file: None,
+            full_env: false,
+            unlimited_processes: false,
+            additional_flags: None,
+        }
+    }
 }
 
 pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>> {
@@ -111,6 +131,12 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
     if config.full_env { args.push("--full-env"); }
     if config.unlimited_processes { args.push("--processes=0"); }
 
+    if let Some(additional_flags) = &config.additional_flags {
+        for &flag in additional_flags {
+            args.push(flag);
+        }
+    }
+
     args.push("--");
 
     for piece in command.iter() {
@@ -125,29 +151,66 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
     Ok(output)
 }
 
-pub fn compile<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+pub fn compile(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.compile(source, destination);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
+
+    let mut additional_flags = vec![];
+    if let Some(flags) = &config.additional_flags {
+        for &flag in flags { additional_flags.push(flag); }
+    }
+    if let Some(flags) = &language.compile_flags {
+        for flag in flags { additional_flags.push(flag); }
+    }
+    let additional_flags =
+        if additional_flags.is_empty() { None } else { Some(additional_flags) };
+
+    let config = ExecuteConfig {
+        additional_flags,
+        ..config.clone()
+    };
 
     let output = execute(
         &sb,
         &config,
         &flags_str,
     )?;
-    log::trace!("Compiled {} [{}] from {}.", destination, language.get_code(), source);
+
+    log::trace!("Compiled {} [{}] from {}.", destination, language.code, source);
+    log::trace!("  Compile stdout: {}", String::from_utf8_lossy(&output.stdout));
+    log::trace!("  Compile stderr: {}", String::from_utf8_lossy(&output.stderr));
 
     Ok(output)
 }
 
-pub fn run<L: Language + ?Sized>(sb: &Sandbox, language: &L, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.execute(executable);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
-    execute(
+
+    let mut additional_flags = vec![];
+    if let Some(flags) = &config.additional_flags {
+        for &flag in flags { additional_flags.push(flag); }
+    }
+    if let Some(flags) = &language.execute_flags {
+        for flag in flags { additional_flags.push(flag); }
+    }
+    let additional_flags =
+        if additional_flags.is_empty() { None } else { Some(additional_flags) };
+
+    let config = ExecuteConfig {
+        additional_flags,
+        ..config.clone()
+    };
+
+    let output = execute(
         &sb,
         &config,
         &flags_str,
     )?;
-    log::trace!("Run {} [{}] finished.", executable, language.get_code());
+
+    log::trace!("Run {} [{}] finished.", executable, language.code);
+    log::trace!("  Run stdout: {}", String::from_utf8_lossy(&output.stdout));
+    log::trace!("  Run stderr: {}", String::from_utf8_lossy(&output.stderr));
 
     Ok(())
 }

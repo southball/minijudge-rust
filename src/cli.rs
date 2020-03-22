@@ -1,6 +1,6 @@
 use clap::Clap;
 use serde::{Serialize, Deserialize};
-use crate::languages;
+use crate::languages::DynLanguage;
 use simplelog::LevelFilter;
 
 /// MiniJudge-Rust
@@ -57,6 +57,10 @@ pub struct Opts {
     /// the whole submission is judged.
     #[clap(long = "socket")]
     pub socket: Option<String>,
+
+    /// The YAML file containing definition to different languages.
+    #[clap(long = "languages-definition")]
+    pub languages_definition: String,
 }
 
 fn default_id() -> usize { 0 }
@@ -116,12 +120,17 @@ pub fn read_metadata(metadata_path: &str) -> Result<Metadata, Box<dyn std::error
     Ok(metadata)
 }
 
-pub fn detect_language(language: &str) -> Result<Box<dyn languages::Language>, ()> {
-    match language {
-        "cpp17" => Ok(Box::new(languages::LanguageCpp17 {})),
-        "python3" => Ok(Box::new(languages::LanguagePython3 {})),
-        _ => { Err(()) }
+pub fn detect_language(code: &str, languages_definition: &str) -> Result<DynLanguage, ()> {
+    let languages_definition = std::fs::File::open(&languages_definition).unwrap();
+    let languages: Vec<DynLanguage> = serde_yaml::from_reader(languages_definition).unwrap();
+
+    for language in languages {
+        if &language.code == code {
+            return Ok(language);
+        }
     }
+
+    Err(())
 }
 
 pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {

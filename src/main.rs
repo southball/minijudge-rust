@@ -9,7 +9,7 @@ use cli::*;
 use std::path::PathBuf;
 use std::thread;
 use std::sync::{Arc, Mutex};
-use languages::Language;
+use languages::DynLanguage;
 use std::borrow::Borrow;
 use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
 use judge::TestcaseOutput;
@@ -51,16 +51,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sandbox_primary = &sandboxes[0];
 
-    let source_language = cli::detect_language(&opts.language).unwrap();
-    let source_file = source_language.source_filename();
-    let executable_file = source_language.executable_filename();
+    let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
+    let source_file = &source_language.source_filename;
+    let executable_file = &source_language.executable_filename;
 
     sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
-    compile_source::<>(sandbox_primary, &*source_language, &metadata, &source_file, &executable_file)?;
+    compile_source::<>(sandbox_primary, &source_language, &metadata, &source_file, &executable_file)?;
 
     sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
     sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
-    compile_checker::<>(sandbox_primary, languages::LanguageCpp17 {}.borrow(), &metadata, "checker.cpp", "checker")?;
+    compile_checker::<>(sandbox_primary, &detect_language("cpp17", &opts.languages_definition).unwrap(), &metadata, "checker.cpp", "checker")?;
 
     // Copy the compiled binaries to other sandboxes.
     for sb_sub in sandboxes.iter().skip(1) {
@@ -160,8 +160,8 @@ fn judge_thread(
 ) {
     log::debug!("Thread {} spawned. Sandbox at {}.", thread_id, &thread_sb.path.to_str().unwrap());
 
-    let source_language = cli::detect_language(&opts.language).unwrap();
-    let executable_file = source_language.executable_filename();
+    let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
+    let executable_file = &source_language.executable_filename;
 
     loop {
         let testcase: Option<Testcase> = testcases_stack.lock().unwrap().pop();
@@ -183,9 +183,9 @@ fn judge_thread(
             "in.txt").unwrap();
 
         log::trace!("Test {} executing.", id);
-        sandbox::run::<>(
+        sandbox::run(
             &thread_sb,
-            &*source_language,
+            &source_language,
             &sandbox::ExecuteConfig {
                 memory_limit: metadata.memory_limit,
                 time_limit: metadata.time_limit,
@@ -196,6 +196,7 @@ fn judge_thread(
                 input_file: Some("in.txt"),
                 output_file: Some("out.txt"),
                 error_file: None,
+                ..sandbox::ExecuteConfig::default()
             },
             &executable_file,
         ).unwrap();
@@ -220,12 +221,8 @@ fn judge_thread(
                 memory_limit: metadata.checker_memory_limit,
                 time_limit: metadata.checker_time_limit,
                 wall_time_limit: metadata.checker_time_limit,
-                meta_file: None,
-                full_env: false,
-                unlimited_processes: false,
-                input_file: None,
-                output_file: None,
                 error_file: Some("checker.txt"),
+                ..sandbox::ExecuteConfig::default()
             },
             &flags,
         ).unwrap();
@@ -259,14 +256,14 @@ fn judge_thread(
     }
 }
 
-fn compile_source<L: Language + ?Sized>(
+fn compile_source(
     sb: &sandbox::Sandbox,
-    language: &L,
+    language: &DynLanguage,
     metadata: &Metadata,
     source: &str,
     destination: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    sandbox::compile::<L>(
+    sandbox::compile(
         sb,
         language,
         &sandbox::ExecuteConfig {
@@ -279,6 +276,7 @@ fn compile_source<L: Language + ?Sized>(
             input_file: None,
             output_file: None,
             error_file: None,
+            ..sandbox::ExecuteConfig::default()
         },
         source,
         destination,
@@ -287,14 +285,14 @@ fn compile_source<L: Language + ?Sized>(
     Ok(())
 }
 
-fn compile_checker<L: Language + ?Sized>(
+fn compile_checker(
     sb: &sandbox::Sandbox,
-    language: &L,
+    language: &DynLanguage,
     metadata: &Metadata,
     source: &str,
     destination: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    sandbox::compile::<L>(
+    sandbox::compile(
         sb,
         language,
         &sandbox::ExecuteConfig {
@@ -307,6 +305,8 @@ fn compile_checker<L: Language + ?Sized>(
             input_file: None,
             output_file: None,
             error_file: None,
+            additional_flags: Some(vec!["--full-env"]),
+            ..sandbox::ExecuteConfig::default()
         },
         source,
         destination,
