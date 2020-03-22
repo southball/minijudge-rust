@@ -8,7 +8,7 @@ This is a judge process written in Rust.
 - Supports Codeforces-style checker with `testlib.h`.
 - Supports multiple judge processes running simultaneously.
 - Supports outputting the final verdict to file with multiple format support.
-- Supports C++17 and Python 3 at the moment (will support adding languages later)
+- Supports adding language through `languages.yml`.
 - Has [ZeroMQ](https://zeromq.org/) publisher support to notify other software of judge progress
 
 ## Setting up
@@ -17,6 +17,61 @@ This is a judge process written in Rust.
 2. Install the sandbox with `sudo make install`.
 3. Build the judge process with `cargo build --release`.
 4. Run the judge process with `sudo minijudge-rust`. See the [Help](#Help) section below to see the required and optional flags.
+
+## Languages setting
+
+The path to a YAML file containing the definition to the languages should be passed to the judge process.
+
+*Note that a C++17 (`cpp17`) entry is **always** required for compiling the checker.*
+
+The list of fields are listed below:
+
+- `code` (`string`, required): the language code passed to the judge for this language.
+- `source_filename` (`string`, required): the filename to be used inside the sandbox for the source file.
+- `executable_filename` (`string`, required): the filename to be used inside the sandbox for the executable file.
+- `compile_command` (`string[]`, required): the list of **tokens** for the compile command. The tokens are formatted using Handlebars and two variables, `{{source}}` and `{{destination}}`, are passed to the template engine.
+- `execute_command` (`string[]`, required): the list of **tokens** for the execute command. The tokens are formatted using Handlebars and one variable, `{{executable}}`, is passed to the template engine.
+- `compile_flags` (`string[]`, optional): the list of additional flags to pass to the `ioi/isolate` sandbox when the executable is compiled from the source file.
+- `execute_flags` (`string[]`, optional): the list of additional flags to pass to the `ioi/isolate` sandbox when the executable is executed.
+
+Some sample entries for C++17, Python 3 and NodeJS are listed below:
+
+```yaml
+- code: "cpp17"
+  source_filename: "source.cpp"
+  executable_filename: "program"
+  compile_command:
+    - "/usr/bin/g++"
+    - "--std=c++17"
+    - "-O2"
+    - "-o"
+    - "{{destination}}"
+    - "{{source}}"
+  execute_command:
+    - "{{executable}}"
+- code: "python3"
+  source_filename: "source.py"
+  executable_filename: "program.py"
+  compile_command:
+    - "/bin/cp"
+    - "{{source}}"
+    - "{{destination}}"
+  execute_command:
+    - "/usr/bin/python3"
+    - "{{executable}}"
+- code: "nodejs"
+  source_filename: "source.js"
+  executable_filename: "program.js"
+  compile_command:
+    - "/bin/cp"
+    - "{{source}}"
+    - "{{destination}}"
+  execute_command:
+    - "/usr/bin/node"
+    - "{{executable}}"
+  execute_flags:
+    - "--processes=0"
+```
 
 ## Metadata format
 
@@ -57,7 +112,8 @@ Southball
 MiniJudge-Rust A miniature judge written in Rust
 
 USAGE:
-    minijudge-rust [FLAGS] [OPTIONS] --metadata <metadata> --language <language> --source <source> --checker <checker> --testcases <testcases> --testlib <testlib> --sandboxes <sandboxes>
+    minijudge-rust [FLAGS] [OPTIONS] --metadata <metadata> --language <language> --source <source> --checker <checker> --testcases <testcases> -
+-testlib <testlib> --sandboxes <sandboxes> --languages-definition <languages-definition>
 
 FLAGS:
     -h, --help       Prints help information
@@ -66,18 +122,23 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-        --checker <checker>                  The path to the source code of checker. The source code must be written in
-                                             C++
-        --language <language>                The language that the source code was written in
-        --metadata <metadata>                The path to a YAML file containing the metadata, including time limit,
-                                             memory limit, test counts, etc
-        --sandboxes <sandboxes>              The number of sandboxes to be created. The sandbox ID is 0-based
-        --socket <socket>                    Socket to announce updates to. Events are emitted when test cases are
-                                             completed, and when the whole submission is judged [default: ]
-        --source <source>                    The path to the file containing source code
-        --testcases <testcases>              The path to be used as the base path of the test cases files
-        --testlib <testlib>                  The path to testlib.h
-        --verdict <verdict>                  The file to output the verdict to [default: ]
-        --verdict-format <verdict-format>    The format of the verdict to output [default: json]
-```
+        --checker <checker>
+            The path to the source code of checker. The source code must be written in C++
 
+        --language <language>                            The language that the source code was written in
+        --languages-definition <languages-definition>    The YAML file containing definition to different languages
+        --metadata <metadata>
+            The path to a YAML file containing the metadata, including time limit, memory limit, test counts, etc
+
+        --sandboxes <sandboxes>
+            The number of sandboxes to be created. The sandbox ID is 0-based
+
+        --socket <socket>
+            Socket to announce updates to. Events are emitted when test cases are completed, and when the whole
+            submission is judged
+        --source <source>                                The path to the file containing source code
+        --testcases <testcases>                          The path to be used as the base path of the test cases files
+        --testlib <testlib>                              The path to testlib.h
+        --verdict <verdict>                              The file to output the verdict to
+        --verdict-format <verdict-format>                The format of the verdict to output [default: json]
+```

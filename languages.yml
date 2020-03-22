@@ -1,13 +1,3 @@
-- code: "python3"
-  source_filename: "source.py"
-  executable_filename: "program.py"
-  compile_command:
-    - "/bin/cp"
-    - "{{source}}"
-    - "{{destination}}"
-  execute_command:
-    - "/usr/bin/python3"
-    - "{{executable}}"
 - code: "cpp17"
   source_filename: "source.cpp"
   executable_filename: "program"
@@ -19,6 +9,16 @@
     - "{{destination}}"
     - "{{source}}"
   execute_command:
+    - "{{executable}}"
+- code: "python3"
+  source_filename: "source.py"
+  executable_filename: "program.py"
+  compile_command:
+    - "/bin/cp"
+    - "{{source}}"
+    - "{{destination}}"
+  execute_command:
+    - "/usr/bin/python3"
     - "{{executable}}"
 - code: "nodejs"
   source_filename: "source.js"
