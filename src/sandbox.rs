@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use crate::languages::DynLanguage;
 use std::ffi::OsString;
 use std::clone::Clone;
@@ -46,6 +46,21 @@ impl Default for ExecuteConfig<'_> {
             unlimited_processes: false,
             additional_flags: None,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExecuteError;
+
+impl std::fmt::Display for ExecuteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Execution format.")
+    }
+}
+
+impl std::error::Error for ExecuteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
     }
 }
 
@@ -148,7 +163,15 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
         .args(&args)
         .output()?;
 
-    Ok(output)
+    log::trace!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+    log::trace!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+    log::trace!("Status: {}", output.status.code().unwrap());
+
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(Box::new(ExecuteError {}))
+    }
 }
 
 pub fn compile(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
@@ -183,7 +206,7 @@ pub fn compile(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, sou
     Ok(output)
 }
 
-pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executable: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executable: &str) -> Result<Output, Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.execute(executable);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
 
@@ -212,7 +235,7 @@ pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executa
     log::trace!("  Run stdout: {}", String::from_utf8_lossy(&output.stdout));
     log::trace!("  Run stderr: {}", String::from_utf8_lossy(&output.stderr));
 
-    Ok(())
+    Ok(output)
 }
 
 /// Copy a file from outside the sandbox to inside the sandbox.

@@ -25,6 +25,11 @@ pub struct Opts {
     #[clap(long = "checker")]
     pub checker: String,
 
+    /// The path to the source code of interactor. If provided, the problem will be treated as
+    /// interactive.
+    #[clap(long = "interactor")]
+    pub interactor: Option<String>,
+
     /// The path to be used as the base path of the test cases files.
     #[clap(long = "testcases")]
     pub testcases: String,
@@ -86,13 +91,19 @@ pub struct Metadata {
 }
 
 pub fn debug_opts(opts: &Opts) {
-    log::debug!("Sandboxes: {}", &opts.sandboxes);
-    log::debug!("Metadata:  {}", &opts.metadata);
-    log::debug!("Language:  {}", &opts.language);
-    log::debug!("Checker:   {}", &opts.checker);
-    log::debug!("Source:    {}", &opts.source);
-    log::debug!("Testcases: {}", &opts.testcases);
-    log::debug!("Testlib:   {}", &opts.testlib);
+    log::debug!("Sandboxes:  {}", &opts.sandboxes);
+    log::debug!("Metadata:   {}", &opts.metadata);
+    log::debug!("Language:   {}", &opts.language);
+    log::debug!("Source:     {}", &opts.source);
+    log::debug!("Checker:    {}", &opts.checker);
+    log::debug!("Interactor: {}", &opts.interactor.as_ref().unwrap_or(&"None".to_string()));
+    log::debug!("Testcases:  {}", &opts.testcases);
+    log::debug!("Testlib:    {}", &opts.testlib);
+    log::debug!("Verdict:    {} ({})",
+        &opts.verdict.as_ref().unwrap_or(&"stdout".to_string()),
+        &opts.verdict_format);
+    log::debug!("Socket:     {}", &opts.socket.as_ref().unwrap_or(&"None".to_string()));
+    log::debug!("Lang. Def.: {}", &opts.languages_definition);
 }
 
 pub fn debug_metadata(metadata: &Metadata) {

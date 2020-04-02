@@ -40,34 +40,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let metadata = read_metadata(&opts.metadata)?;
     debug_metadata(&metadata);
 
-    let sandbox_count: i32 = opts.sandboxes;
-    assert!(sandbox_count >= 1);
-
-    let mut sandboxes = Vec::new();
-
-    for i in 0..sandbox_count {
-        sandboxes.push(sandbox::create_sandbox(i)?);
-    }
-
-    let sandbox_primary = &sandboxes[0];
-
-    let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
-    let source_file = &source_language.source_filename;
-    let executable_file = &source_language.executable_filename;
-
-    sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
-    compile_source::<>(sandbox_primary, &source_language, &metadata, &source_file, &executable_file)?;
-
-    sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
-    sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
-    compile_checker::<>(sandbox_primary, &detect_language("cpp17", &opts.languages_definition).unwrap(), &metadata, "checker.cpp", "checker")?;
-
-    // Copy the compiled binaries to other sandboxes.
-    for sb_sub in sandboxes.iter().skip(1) {
-        sandbox::copy_between(&sandbox_primary, &sb_sub, "checker", "checker")?;
-        sandbox::copy_between(&sandbox_primary, &sb_sub, &executable_file, &executable_file)?;
-    }
-
     let testcases_stack: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(
         metadata.testcases.clone().into_iter().rev().collect::<Vec<Testcase>>()
     ));
@@ -84,6 +56,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sandbox_output: "".to_string(),
         }; metadata.testcases.len()],
     }));
+
+    let sandbox_count: i32 = opts.sandboxes;
+    assert!(sandbox_count >= 1);
+
+    let mut sandboxes = Vec::new();
+
+    for i in 0..sandbox_count {
+        sandboxes.push(sandbox::create_sandbox(i)?);
+    }
+
+    let sandbox_primary = &sandboxes[0];
+
+    let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
+    let source_file = &source_language.source_filename;
+    let executable_file = &source_language.executable_filename;
+
+    sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
+    let result = compile_source::<>(sandbox_primary, &source_language, &metadata, &source_file, &executable_file);
+
+    if let Err(_) = result {
+        let mut judge_output = judge_output.lock().unwrap();
+        judge_output.verdict = judge_definitions::verdicts::VERDICT_CE.into();
+        for i in 0..judge_output.testcases.len() {
+            judge_output.testcases[i] = judge::TestcaseOutput {
+                verdict: judge_definitions::verdicts::VERDICT_CE.into(),
+                ..judge_output.testcases[i].clone()
+            };
+        }
+        flush_verdict(&opts, &judge_output)?;
+        return Ok(());
+    }
+
+    sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
+    sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
+    let result = compile_checker::<>(sandbox_primary, &detect_language("cpp17", &opts.languages_definition).unwrap(), &metadata, "checker.cpp", "checker");
+
+    if let Err(err) = result {
+        println!("{:?}", err);
+
+        let mut judge_output = judge_output.lock().unwrap();
+        judge_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
+        for i in 0..judge_output.testcases.len() {
+            judge_output.testcases[i] = judge::TestcaseOutput {
+                verdict: judge_definitions::verdicts::VERDICT_SE.into(),
+                ..judge_output.testcases[i].clone()
+            };
+        }
+        flush_verdict(&opts, &judge_output)?;
+        return Ok(());
+    }
+
+    // Copy the compiled binaries to other sandboxes.
+    for sb_sub in sandboxes.iter().skip(1) {
+        sandbox::copy_between(&sandbox_primary, &sb_sub, "checker", "checker")?;
+        sandbox::copy_between(&sandbox_primary, &sb_sub, &executable_file, &executable_file)?;
+    }
 
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     for (thread_id, thread_sb) in sandboxes.iter().enumerate() {
@@ -120,7 +148,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut judge_output = judge_output.lock().unwrap();
     judge::calc_overall_verdict(&mut judge_output);
 
-    // Output the overall verdict as YAML.
+    flush_verdict(&opts, &*judge_output)?;
+
+    if let Some(socket) = socket {
+        let socket = socket.lock().unwrap();
+        let submission_json = serde_json::to_string(communications::UpdateEvent::<judge::JudgeOutput> {
+            event_type: communications::EVENT_SUBMISSION.to_string(),
+            event: &*judge_output
+        }.borrow()).unwrap();
+        socket.send(&submission_json, 0).unwrap();
+    }
+
+    Ok(())
+}
+
+fn flush_verdict(
+    opts: &Opts,
+    judge_output: &judge::JudgeOutput,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Generate the overall verdict.
     let output = match &opts.verdict_format[..] {
         "json" => serde_json::to_string(&*judge_output)?,
         "yaml" => serde_yaml::to_string(&*judge_output)?,
@@ -135,15 +181,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(verdict_file, output)?;
     } else {
         println!("{}", output);
-    }
-
-    if let Some(socket) = socket {
-        let socket = socket.lock().unwrap();
-        let submission_json = serde_json::to_string(communications::UpdateEvent::<judge::JudgeOutput> {
-            event_type: communications::EVENT_SUBMISSION.to_string(),
-            event: &*judge_output
-        }.borrow()).unwrap();
-        socket.send(&submission_json, 0).unwrap();
     }
 
     Ok(())
@@ -175,6 +212,28 @@ fn judge_thread(
         let mut testcase_output: judge::TestcaseOutput =
             judge_output.lock().unwrap().testcases[id].clone();
 
+        /// Output and store the result of the testcase as needed.
+        let finalize_testcase = |testcase_output: &mut judge::TestcaseOutput| {
+            judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
+            log::debug!("Test {} processing completed by thread {}.", id, thread_id);
+            log::debug!(
+                "Test {}: Verdict = {}, Time = {}, Memory = {}",
+                id,
+                testcase_output.verdict,
+                testcase_output.time,
+                testcase_output.memory,
+            );
+
+            if let Some(socket) = &socket {
+                let socket = socket.lock().unwrap();
+                let testcase_json = serde_json::to_string(communications::UpdateEvent::<TestcaseOutput> {
+                    event_type: communications::EVENT_TESTCASE.to_string(),
+                    event: &testcase_output,
+                }.borrow()).unwrap();
+                socket.send(&testcase_json, 0).unwrap();
+            }
+        };
+
         log::debug!("Test {} will be processed by thread {}.", id, thread_id);
 
         sandbox::copy_into(
@@ -183,7 +242,7 @@ fn judge_thread(
             "in.txt").unwrap();
 
         log::trace!("Test {} executing.", id);
-        sandbox::run(
+        let execute_result = sandbox::run(
             &thread_sb,
             &source_language,
             &sandbox::ExecuteConfig {
@@ -199,8 +258,14 @@ fn judge_thread(
                 ..sandbox::ExecuteConfig::default()
             },
             &executable_file,
-        ).unwrap();
+        );
         log::trace!("Test {} executed.", id);
+
+        if execute_result.is_err() || !execute_result.unwrap().status.success() || sandbox::read_file(&thread_sb, "meta.txt").is_err() {
+            testcase_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
+            finalize_testcase(&mut testcase_output);
+            continue;
+        }
 
         let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
         let meta = judge::parse_meta(&meta_file);
@@ -215,7 +280,7 @@ fn judge_thread(
         let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
 
         log::trace!("Test {} checker executing.", id);
-        let _checker_output = sandbox::execute(
+        let checker_result = sandbox::execute(
             &thread_sb,
             &sandbox::ExecuteConfig {
                 memory_limit: metadata.checker_memory_limit,
@@ -225,7 +290,14 @@ fn judge_thread(
                 ..sandbox::ExecuteConfig::default()
             },
             &flags,
-        ).unwrap();
+        );
+
+        if checker_result.is_err() || !checker_result.unwrap().status.success() {
+            testcase_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
+            finalize_testcase(&mut testcase_output);
+            continue;
+        }
+
         log::trace!("Test {} checker executed.", id);
 
         let checker_output = sandbox::read_file(&thread_sb, "checker.txt").unwrap().trim().to_string();
@@ -235,24 +307,7 @@ fn judge_thread(
 
         if let Some(verdict) = meta.verdict { testcase_output.verdict = verdict.clone(); }
 
-        judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
-        log::debug!("Test {} processing completed by thread {}.", id, thread_id);
-        log::debug!(
-            "Test {}: Verdict = {}, Time = {}, Memory = {}",
-            id,
-            testcase_output.verdict,
-            testcase_output.time,
-            testcase_output.memory,
-        );
-
-        if let Some(socket) = &socket {
-            let socket = socket.lock().unwrap();
-            let testcase_json = serde_json::to_string(communications::UpdateEvent::<TestcaseOutput> {
-                event_type: communications::EVENT_TESTCASE.to_string(),
-                event: &testcase_output,
-            }.borrow()).unwrap();
-            socket.send(&testcase_json, 0).unwrap();
-        }
+        finalize_testcase(&mut testcase_output);
     }
 }
 
