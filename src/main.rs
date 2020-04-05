@@ -261,7 +261,7 @@ fn judge_thread(
         );
         log::trace!("Test {} executed.", id);
 
-        if execute_result.is_err() || !execute_result.unwrap().status.success() || sandbox::read_file(&thread_sb, "meta.txt").is_err() {
+        if execute_result.is_err() || sandbox::read_file(&thread_sb, "meta.txt").is_err() {
             testcase_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
             finalize_testcase(&mut testcase_output);
             continue;
@@ -275,6 +275,11 @@ fn judge_thread(
         if let Some(verdict) = &meta.verdict { testcase_output.verdict = verdict.clone(); }
 
         testcase_output.sandbox_output = meta_file.clone();
+
+        if meta.verdict.is_some() {
+            finalize_testcase(&mut testcase_output);
+            continue;
+        }
 
         sandbox::copy_into(&thread_sb, PathBuf::from(&opts.testcases).join(&output).to_str().unwrap(), "ans.txt").unwrap();
         let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
@@ -292,7 +297,7 @@ fn judge_thread(
             &flags,
         );
 
-        if checker_result.is_err() || !checker_result.unwrap().status.success() {
+        if checker_result.is_err() {
             testcase_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
             finalize_testcase(&mut testcase_output);
             continue;

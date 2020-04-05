@@ -167,11 +167,7 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
     log::trace!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
     log::trace!("Status: {}", output.status.code().unwrap());
 
-    if output.status.success() {
-        Ok(output)
-    } else {
-        Err(Box::new(ExecuteError {}))
-    }
+    Ok(output)
 }
 
 pub fn compile(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
