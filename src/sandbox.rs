@@ -50,15 +50,30 @@ impl Default for ExecuteConfig<'_> {
 }
 
 #[derive(Debug, Clone)]
-struct ExecuteError;
+pub struct ExecuteError;
 
 impl std::fmt::Display for ExecuteError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Execution format.")
+        write!(f, "Execution error.")
     }
 }
 
 impl std::error::Error for ExecuteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileError;
+
+impl std::fmt::Display for CompileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Compile error.")
+    }
+}
+
+impl std::error::Error for CompileError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
     }

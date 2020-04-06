@@ -13,6 +13,7 @@ use languages::DynLanguage;
 use std::borrow::Borrow;
 use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
 use judge::TestcaseOutput;
+use sandbox::CompileError;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opts: Opts = Opts::parse();
@@ -323,7 +324,7 @@ fn compile_source(
     source: &str,
     destination: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    sandbox::compile(
+    let output = sandbox::compile(
         sb,
         language,
         &sandbox::ExecuteConfig {
@@ -342,7 +343,11 @@ fn compile_source(
         destination,
     )?;
 
-    Ok(())
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(Box::new(CompileError {}))
+    }
 }
 
 fn compile_checker(
