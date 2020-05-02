@@ -1,7 +1,8 @@
-use clap::Clap;
-use serde::{Serialize, Deserialize};
 use crate::languages::DynLanguage;
+use clap::Clap;
+use serde::{Deserialize, Serialize};
 use simplelog::LevelFilter;
+use std::path::Path;
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
@@ -68,7 +69,27 @@ pub struct Opts {
     pub languages_definition: String,
 }
 
-fn default_id() -> usize { 0 }
+fn default_id() -> usize {
+    0
+}
+
+/// This is an error in the user's option passed to the program. The process cannot be continued in this case.
+#[derive(Debug, Clone)]
+pub struct OptionError {
+    pub message: String,
+}
+
+impl std::fmt::Display for OptionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Option error: {}", self.message)
+    }
+}
+
+impl std::error::Error for OptionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Testcase {
@@ -96,13 +117,21 @@ pub fn debug_opts(opts: &Opts) {
     log::debug!("Language:   {}", &opts.language);
     log::debug!("Source:     {}", &opts.source);
     log::debug!("Checker:    {}", &opts.checker);
-    log::debug!("Interactor: {}", &opts.interactor.as_ref().unwrap_or(&"None".to_string()));
+    log::debug!(
+        "Interactor: {}",
+        &opts.interactor.as_ref().unwrap_or(&"None".to_string())
+    );
     log::debug!("Testcases:  {}", &opts.testcases);
     log::debug!("Testlib:    {}", &opts.testlib);
-    log::debug!("Verdict:    {} ({})",
+    log::debug!(
+        "Verdict:    {} ({})",
         &opts.verdict.as_ref().unwrap_or(&"stdout".to_string()),
-        &opts.verdict_format);
-    log::debug!("Socket:     {}", &opts.socket.as_ref().unwrap_or(&"None".to_string()));
+        &opts.verdict_format
+    );
+    log::debug!(
+        "Socket:     {}",
+        &opts.socket.as_ref().unwrap_or(&"None".to_string())
+    );
     log::debug!("Lang. Def.: {}", &opts.languages_definition);
 }
 
@@ -122,7 +151,13 @@ pub fn read_metadata(metadata_path: &str) -> Result<Metadata, Box<dyn std::error
     log::debug!("Reading metadata from {}...", &metadata_path);
 
     let metadata_file = std::fs::File::open(metadata_path)?;
-    let mut metadata: Metadata = serde_yaml::from_reader(metadata_file)?;
+    let mut metadata: Metadata = match serde_yaml::from_reader(metadata_file) {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            log::error!("Error when parsing metadata: {:?}", err);
+            return Err(Box::new(err));
+        }
+    };
 
     for (i, testcase) in metadata.testcases.iter_mut().enumerate() {
         testcase.id = i;
@@ -157,3 +192,44 @@ pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
     }
 }
 
+/// A helper function for `precheck_opts` and `precheck_metadata` returning a 
+/// well-formed error if the specified file does not exist.
+pub fn assert_exists(path_raw: &str, description: &str) -> Result<(), Box<OptionError>> {
+    let path = Path::new(path_raw);
+
+    if path.exists() {
+        Ok(())
+    } else {
+        Err(Box::new(OptionError {
+            message: format!("The {} specified at {} does not exist.", description, path_raw)
+        }))
+    }
+}
+
+/// Check that the files specified in the command line options exist.
+pub fn precheck_opts(opts: &Opts) -> Result<(), Box<OptionError>> {
+    assert_exists(&opts.metadata, "metadata file")?;
+    assert_exists(&opts.source, "source file")?;
+    assert_exists(&opts.checker, "checker file")?;
+    assert_exists(&opts.testcases, "testcases folder")?;
+    assert_exists(&opts.testlib, "testlib.h")?;
+    assert_exists(&opts.languages_definition, "languages definition file")?;
+    
+    if let Some(interactor) = &opts.interactor {
+        assert_exists(interactor, "interactor file")?;
+    }
+
+    Ok(())
+}
+
+/// Check that the test files 
+pub fn precheck_metadata(opts: &Opts, metadata: &Metadata) -> Result<(), Box<OptionError>> {
+    for (testcase_id, testcase) in metadata.testcases.iter().enumerate() {
+        let in_path = Path::new(&opts.testcases).join(&testcase.input);
+        let out_path = Path::new(&opts.testcases).join(&testcase.output);
+        assert_exists(in_path.as_os_str().to_str().unwrap(), &format!("input file for test {}", testcase_id + 1))?;
+        assert_exists(out_path.as_os_str().to_str().unwrap(), &format!("output file for test {}", testcase_id + 1))?;
+    }
+
+    Ok(())
+}

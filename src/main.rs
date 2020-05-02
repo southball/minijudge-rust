@@ -38,9 +38,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let metadata = read_metadata(&opts.metadata)?;
+    let metadata = match read_metadata(&opts.metadata) {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            log::error!("Failed to read metadata.");
+            // TODO output SE verdict.
+            return Err(err);
+        }
+    };
+
+    // Output metadata to debug log.
     debug_metadata(&metadata);
 
+    // Check that the files referred to in opts and metadata all exist.
+    if let Err(err) = precheck_opts(&opts) {
+        log::error!("Error when checking command line options: {:?}", err);
+        return Err(err);
+    }
+
+    if let Err(err) = precheck_metadata(&opts, &metadata) {
+        log::error!("Error when checking metadata: {:?}", err);
+        return Err(err);
+    }
+
+    // Generate a list of testcases for judge to consume.
     let testcases_stack: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(
         metadata.testcases.clone().into_iter().rev().collect::<Vec<Testcase>>()
     ));
