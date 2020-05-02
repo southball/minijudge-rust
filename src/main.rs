@@ -1,37 +1,44 @@
 mod cli;
-mod sandbox;
+mod communications;
+mod debug;
+mod error;
 mod judge;
 mod languages;
-mod communications;
+mod precheck;
+mod sandbox;
 
 use clap::derive::Clap;
 use cli::*;
-use std::path::PathBuf;
-use std::thread;
-use std::sync::{Arc, Mutex};
-use languages::DynLanguage;
-use std::borrow::Borrow;
-use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
+use error::CompileError;
 use judge::TestcaseOutput;
-use sandbox::CompileError;
+use languages::Language;
+use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
+use std::borrow::Borrow;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opts: Opts = Opts::parse();
 
     // Derive log level from CLI options and construct logger.
     let log_level = cli::calc_log_level(opts.verbosity, opts.quiet);
-    CombinedLogger::init(
-        vec![
-            TermLogger::new(log_level, Config::default(), TerminalMode::Mixed).unwrap()
-        ]
-    ).unwrap();
+    CombinedLogger::init(vec![TermLogger::new(
+        log_level,
+        Config::default(),
+        TerminalMode::Mixed,
+    )
+    .unwrap()])
+    .unwrap();
 
-    debug_opts(&opts);
+    debug::debug_opts(&opts);
 
     let socket: Option<Arc<Mutex<zmq::Socket>>> = if let Some(socket) = &opts.socket {
         let context = zmq::Context::new();
         let responder = context.socket(zmq::PUB).unwrap();
-        responder.set_sndhwm(1_100_100).expect("Failed setting hwm.");
+        responder
+            .set_sndhwm(1_100_100)
+            .expect("Failed setting hwm.");
         responder.bind(socket).expect("Failed binding publisher.");
         Some(Arc::new(Mutex::new(responder)))
     } else {
@@ -48,35 +55,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Output metadata to debug log.
-    debug_metadata(&metadata);
+    debug::debug_metadata(&metadata);
 
     // Check that the files referred to in opts and metadata all exist.
-    if let Err(err) = precheck_opts(&opts) {
+    if let Err(err) = precheck::precheck_opts(&opts) {
         log::error!("Error when checking command line options: {:?}", err);
         return Err(err);
     }
 
-    if let Err(err) = precheck_metadata(&opts, &metadata) {
+    if let Err(err) = precheck::precheck_metadata(&opts, &metadata) {
         log::error!("Error when checking metadata: {:?}", err);
         return Err(err);
     }
 
     // Generate a list of testcases for judge to consume.
     let testcases_stack: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(
-        metadata.testcases.clone().into_iter().rev().collect::<Vec<Testcase>>()
+        metadata
+            .testcases
+            .clone()
+            .into_iter()
+            .rev()
+            .collect::<Vec<Testcase>>(),
     ));
 
     let judge_output: Arc<Mutex<judge::JudgeOutput>> = Arc::new(Mutex::new(judge::JudgeOutput {
         verdict: judge::VERDICT_WJ.to_string(),
         time: 0.0,
         memory: 0,
-        testcases: vec![judge::TestcaseOutput {
-            verdict: judge::VERDICT_WJ.to_string(),
-            time: 0.0,
-            memory: 0,
-            checker_output: "".to_string(),
-            sandbox_output: "".to_string(),
-        }; metadata.testcases.len()],
+        testcases: vec![
+            judge::TestcaseOutput {
+                verdict: judge::VERDICT_WJ.to_string(),
+                time: 0.0,
+                memory: 0,
+                checker_output: "".to_string(),
+                sandbox_output: "".to_string(),
+            };
+            metadata.testcases.len()
+        ],
     }));
 
     let sandbox_count: i32 = opts.sandboxes;
@@ -95,7 +110,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executable_file = &source_language.executable_filename;
 
     sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
-    let result = compile_source::<>(sandbox_primary, &source_language, &metadata, &source_file, &executable_file);
+    let result = compile_source(
+        sandbox_primary,
+        &source_language,
+        &metadata,
+        &source_file,
+        &executable_file,
+    );
 
     if let Err(_) = result {
         let mut judge_output = judge_output.lock().unwrap();
@@ -112,7 +133,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
     sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
-    let result = compile_checker::<>(sandbox_primary, &detect_language("cpp17", &opts.languages_definition).unwrap(), &metadata, "checker.cpp", "checker");
+    let result = compile_checker(
+        sandbox_primary,
+        &detect_language("cpp17", &opts.languages_definition).unwrap(),
+        &metadata,
+        "checker.cpp",
+        "checker",
+    );
 
     if let Err(err) = result {
         println!("{:?}", err);
@@ -132,11 +159,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Copy the compiled binaries to other sandboxes.
     for sb_sub in sandboxes.iter().skip(1) {
         sandbox::copy_between(&sandbox_primary, &sb_sub, "checker", "checker")?;
-        sandbox::copy_between(&sandbox_primary, &sb_sub, &executable_file, &executable_file)?;
+        sandbox::copy_between(
+            &sandbox_primary,
+            &sb_sub,
+            &executable_file,
+            &executable_file,
+        )?;
     }
 
+    // Launch the judge threads.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
     for (thread_id, thread_sb) in sandboxes.iter().enumerate() {
+        // Clone the variables to be passed into the thread.
         let thread_id = thread_id;
         let thread_sb = thread_sb.clone();
         let opts = opts.clone();
@@ -145,7 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let testcases_stack = testcases_stack.clone();
         let socket = match &socket {
             Some(s) => Some(s.clone()),
-            None => None
+            None => None,
         };
 
         let thread = thread::spawn(move || {
@@ -164,7 +198,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Wait for all threads to finish.
-    for thread in threads { thread.join().unwrap(); }
+    for thread in threads {
+        thread.join().unwrap();
+    }
 
     // Compute overall verdict, time and memory
     let mut judge_output = judge_output.lock().unwrap();
@@ -174,10 +210,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(socket) = socket {
         let socket = socket.lock().unwrap();
-        let submission_json = serde_json::to_string(communications::UpdateEvent::<judge::JudgeOutput> {
-            event_type: communications::EVENT_SUBMISSION.to_string(),
-            event: &*judge_output
-        }.borrow()).unwrap();
+        let submission_json = serde_json::to_string(
+            communications::UpdateEvent::<judge::JudgeOutput> {
+                event_type: communications::EVENT_SUBMISSION.to_string(),
+                event: &*judge_output,
+            }
+            .borrow(),
+        )
+        .unwrap();
         socket.send(&submission_json, 0).unwrap();
     }
 
@@ -217,7 +257,11 @@ fn judge_thread(
     judge_output: Arc<Mutex<judge::JudgeOutput>>,
     testcases_stack: Arc<Mutex<Vec<Testcase>>>,
 ) {
-    log::debug!("Thread {} spawned. Sandbox at {}.", thread_id, &thread_sb.path.to_str().unwrap());
+    log::debug!(
+        "Thread {} spawned. Sandbox at {}.",
+        thread_id,
+        &thread_sb.path.to_str().unwrap()
+    );
 
     let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
     let executable_file = &source_language.executable_filename;
@@ -248,10 +292,14 @@ fn judge_thread(
 
             if let Some(socket) = &socket {
                 let socket = socket.lock().unwrap();
-                let testcase_json = serde_json::to_string(communications::UpdateEvent::<TestcaseOutput> {
-                    event_type: communications::EVENT_TESTCASE.to_string(),
-                    event: &testcase_output,
-                }.borrow()).unwrap();
+                let testcase_json = serde_json::to_string(
+                    communications::UpdateEvent::<TestcaseOutput> {
+                        event_type: communications::EVENT_TESTCASE.to_string(),
+                        event: &testcase_output,
+                    }
+                    .borrow(),
+                )
+                .unwrap();
                 socket.send(&testcase_json, 0).unwrap();
             }
         };
@@ -260,8 +308,13 @@ fn judge_thread(
 
         sandbox::copy_into(
             &thread_sb,
-            PathBuf::from(&opts.testcases).join(&input).to_str().unwrap(),
-            "in.txt").unwrap();
+            PathBuf::from(&opts.testcases)
+                .join(&input)
+                .to_str()
+                .unwrap(),
+            "in.txt",
+        )
+        .unwrap();
 
         log::trace!("Test {} executing.", id);
         let execute_result = sandbox::run(
@@ -292,9 +345,15 @@ fn judge_thread(
         let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
         let meta = judge::parse_meta(&meta_file);
 
-        if let Some(time) = &meta.time { testcase_output.time = *time; }
-        if let Some(memory) = &meta.memory { testcase_output.memory = *memory; }
-        if let Some(verdict) = &meta.verdict { testcase_output.verdict = verdict.clone(); }
+        if let Some(time) = &meta.time {
+            testcase_output.time = *time;
+        }
+        if let Some(memory) = &meta.memory {
+            testcase_output.memory = *memory;
+        }
+        if let Some(verdict) = &meta.verdict {
+            testcase_output.verdict = verdict.clone();
+        }
 
         testcase_output.sandbox_output = meta_file.clone();
 
@@ -303,7 +362,15 @@ fn judge_thread(
             continue;
         }
 
-        sandbox::copy_into(&thread_sb, PathBuf::from(&opts.testcases).join(&output).to_str().unwrap(), "ans.txt").unwrap();
+        sandbox::copy_into(
+            &thread_sb,
+            PathBuf::from(&opts.testcases)
+                .join(&output)
+                .to_str()
+                .unwrap(),
+            "ans.txt",
+        )
+        .unwrap();
         let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
 
         log::trace!("Test {} checker executing.", id);
@@ -327,12 +394,17 @@ fn judge_thread(
 
         log::trace!("Test {} checker executed.", id);
 
-        let checker_output = sandbox::read_file(&thread_sb, "checker.txt").unwrap().trim().to_string();
+        let checker_output = sandbox::read_file(&thread_sb, "checker.txt")
+            .unwrap()
+            .trim()
+            .to_string();
 
         let meta = judge::apply_checker_output(&meta, &checker_output);
         testcase_output.checker_output = checker_output.clone();
 
-        if let Some(verdict) = meta.verdict { testcase_output.verdict = verdict.clone(); }
+        if let Some(verdict) = meta.verdict {
+            testcase_output.verdict = verdict.clone();
+        }
 
         finalize_testcase(&mut testcase_output);
     }
@@ -340,10 +412,10 @@ fn judge_thread(
 
 fn compile_source(
     sb: &sandbox::Sandbox,
-    language: &DynLanguage,
+    language: &Language,
     metadata: &Metadata,
     source: &str,
-    destination: &str
+    destination: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let output = sandbox::compile(
         sb,
@@ -373,10 +445,10 @@ fn compile_source(
 
 fn compile_checker(
     sb: &sandbox::Sandbox,
-    language: &DynLanguage,
+    language: &Language,
     metadata: &Metadata,
     source: &str,
-    destination: &str
+    destination: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     sandbox::compile(
         sb,

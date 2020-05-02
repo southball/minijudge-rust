@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
 use handlebars::Handlebars;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize)]
-pub struct DynLanguage {
+pub struct Language {
     pub source_filename: String,
     pub executable_filename: String,
     pub code: String,
@@ -13,17 +13,18 @@ pub struct DynLanguage {
     pub execute_flags: Option<Vec<String>>,
 }
 
-impl DynLanguage {
+impl Language {
     pub fn compile(&self, source: &str, destination: &str) -> Vec<String> {
         let template_engine = Handlebars::new();
         let mut map = BTreeMap::new();
         map.insert("source", source);
         map.insert("destination", destination);
 
-        return self.compile_command
+        return self
+            .compile_command
             .iter()
             .map(|s| template_engine.render_template(s, &map).unwrap())
-            .collect::<>();
+            .collect();
     }
 
     pub fn execute(&self, executable: &str) -> Vec<String> {
@@ -31,9 +32,10 @@ impl DynLanguage {
         let mut map = BTreeMap::new();
         map.insert("executable", executable);
 
-        return self.execute_command
+        return self
+            .execute_command
             .iter()
             .map(|s| template_engine.render_template(s, &map).unwrap())
-            .collect::<>();
+            .collect();
     }
 }

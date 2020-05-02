@@ -1,8 +1,7 @@
-use crate::languages::DynLanguage;
+use crate::languages::Language;
 use clap::Clap;
 use serde::{Deserialize, Serialize};
 use simplelog::LevelFilter;
-use std::path::Path;
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
@@ -69,26 +68,9 @@ pub struct Opts {
     pub languages_definition: String,
 }
 
+/// This is the default ID for testcases when no ID is specified.
 fn default_id() -> usize {
     0
-}
-
-/// This is an error in the user's option passed to the program. The process cannot be continued in this case.
-#[derive(Debug, Clone)]
-pub struct OptionError {
-    pub message: String,
-}
-
-impl std::fmt::Display for OptionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Option error: {}", self.message)
-    }
-}
-
-impl std::error::Error for OptionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -111,42 +93,6 @@ pub struct Metadata {
     pub testcases: Vec<Testcase>,
 }
 
-pub fn debug_opts(opts: &Opts) {
-    log::debug!("Sandboxes:  {}", &opts.sandboxes);
-    log::debug!("Metadata:   {}", &opts.metadata);
-    log::debug!("Language:   {}", &opts.language);
-    log::debug!("Source:     {}", &opts.source);
-    log::debug!("Checker:    {}", &opts.checker);
-    log::debug!(
-        "Interactor: {}",
-        &opts.interactor.as_ref().unwrap_or(&"None".to_string())
-    );
-    log::debug!("Testcases:  {}", &opts.testcases);
-    log::debug!("Testlib:    {}", &opts.testlib);
-    log::debug!(
-        "Verdict:    {} ({})",
-        &opts.verdict.as_ref().unwrap_or(&"stdout".to_string()),
-        &opts.verdict_format
-    );
-    log::debug!(
-        "Socket:     {}",
-        &opts.socket.as_ref().unwrap_or(&"None".to_string())
-    );
-    log::debug!("Lang. Def.: {}", &opts.languages_definition);
-}
-
-pub fn debug_metadata(metadata: &Metadata) {
-    log::debug!("Problem name:         {}", &metadata.problem_name);
-    log::debug!("Time limit:           {}", &metadata.time_limit);
-    log::debug!("Memory limit:         {}", &metadata.memory_limit);
-    log::debug!("Compile time limit:   {}", &metadata.compile_time_limit);
-    log::debug!("Compile memory limit: {}", &metadata.compile_memory_limit);
-    log::debug!("Test cases:");
-    for (i, testcase) in metadata.testcases.iter().enumerate() {
-        log::debug!("  {}: {} -> {}", i + 1, testcase.input, testcase.output);
-    }
-}
-
 pub fn read_metadata(metadata_path: &str) -> Result<Metadata, Box<dyn std::error::Error>> {
     log::debug!("Reading metadata from {}...", &metadata_path);
 
@@ -166,9 +112,9 @@ pub fn read_metadata(metadata_path: &str) -> Result<Metadata, Box<dyn std::error
     Ok(metadata)
 }
 
-pub fn detect_language(code: &str, languages_definition: &str) -> Result<DynLanguage, ()> {
+pub fn detect_language(code: &str, languages_definition: &str) -> Result<Language, ()> {
     let languages_definition = std::fs::File::open(&languages_definition).unwrap();
-    let languages: Vec<DynLanguage> = serde_yaml::from_reader(languages_definition).unwrap();
+    let languages: Vec<Language> = serde_yaml::from_reader(languages_definition).unwrap();
 
     for language in languages {
         if &language.code == code {
@@ -192,44 +138,16 @@ pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
     }
 }
 
-/// A helper function for `precheck_opts` and `precheck_metadata` returning a 
-/// well-formed error if the specified file does not exist.
-pub fn assert_exists(path_raw: &str, description: &str) -> Result<(), Box<OptionError>> {
-    let path = Path::new(path_raw);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if path.exists() {
-        Ok(())
-    } else {
-        Err(Box::new(OptionError {
-            message: format!("The {} specified at {} does not exist.", description, path_raw)
-        }))
+    #[test]
+    fn test_calc_log_level() {
+        assert_eq!(calc_log_level(2, false), LevelFilter::Debug);
+        assert_eq!(calc_log_level(0, true), LevelFilter::Off);
+        
+        // Quiet option must override all verbosity options.
+        assert_eq!(calc_log_level(2, true), LevelFilter::Off);
     }
-}
-
-/// Check that the files specified in the command line options exist.
-pub fn precheck_opts(opts: &Opts) -> Result<(), Box<OptionError>> {
-    assert_exists(&opts.metadata, "metadata file")?;
-    assert_exists(&opts.source, "source file")?;
-    assert_exists(&opts.checker, "checker file")?;
-    assert_exists(&opts.testcases, "testcases folder")?;
-    assert_exists(&opts.testlib, "testlib.h")?;
-    assert_exists(&opts.languages_definition, "languages definition file")?;
-    
-    if let Some(interactor) = &opts.interactor {
-        assert_exists(interactor, "interactor file")?;
-    }
-
-    Ok(())
-}
-
-/// Check that the test files 
-pub fn precheck_metadata(opts: &Opts, metadata: &Metadata) -> Result<(), Box<OptionError>> {
-    for (testcase_id, testcase) in metadata.testcases.iter().enumerate() {
-        let in_path = Path::new(&opts.testcases).join(&testcase.input);
-        let out_path = Path::new(&opts.testcases).join(&testcase.output);
-        assert_exists(in_path.as_os_str().to_str().unwrap(), &format!("input file for test {}", testcase_id + 1))?;
-        assert_exists(out_path.as_os_str().to_str().unwrap(), &format!("output file for test {}", testcase_id + 1))?;
-    }
-
-    Ok(())
 }

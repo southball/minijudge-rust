@@ -1,7 +1,7 @@
 use std::clone::Clone;
 
-pub use judge_definitions::*;
 pub use judge_definitions::verdicts::*;
+pub use judge_definitions::*;
 
 #[derive(Clone)]
 pub struct Meta {
@@ -19,27 +19,6 @@ fn map_status(raw_status: &str) -> String {
         "TO" => VERDICT_TLE.to_string(),
         _ => VERDICT_SE.to_string(),
     }
-}
-
-// This function is for debug purposes.
-#[allow(dead_code)]
-pub fn debug_meta(meta: &Meta) {
-    log::debug!(
-        "Time: {}",
-        if let Some(time) = &meta.time { format!("{}", time) } else { "".to_string() }
-    );
-    log::debug!(
-        "Time-wall: {}",
-        if let Some(time_wall) = &meta.time_wall { format!("{}", time_wall) } else { "".to_string() }
-    );
-    log::debug!(
-        "Memory: {}",
-        if let Some(memory) = &meta.memory { format!("{}", memory) } else { "".to_string() }
-    );
-    log::debug!(
-        "Verdict: {}",
-        if let Some(verdict) = &meta.verdict { verdict.to_string() } else { "".to_string() }
-    );
 }
 
 pub fn parse_meta(source: &str) -> Meta {
@@ -60,12 +39,30 @@ pub fn parse_meta(source: &str) -> Meta {
             let value = &line[len + 1..];
 
             match key {
-                "time" => { if let Ok(v) = value.parse::<f64>() { meta.time = Some(v); } },
-                "time-wall" => { if let Ok(v) = value.parse::<f64>() { meta.time_wall = Some(v); } },
-                "max-rss" => { if let Ok(v) = value.parse::<i64>() { meta.memory = Some(v); } },
-                "exitcode" => { if let Ok(v) = value.parse::<i64>() { meta.exit_code = Some(v); } }
-                "status" => { meta.verdict = Some(map_status(value)); },
-                _ => {},
+                "time" => {
+                    if let Ok(v) = value.parse::<f64>() {
+                        meta.time = Some(v);
+                    }
+                }
+                "time-wall" => {
+                    if let Ok(v) = value.parse::<f64>() {
+                        meta.time_wall = Some(v);
+                    }
+                }
+                "max-rss" => {
+                    if let Ok(v) = value.parse::<i64>() {
+                        meta.memory = Some(v);
+                    }
+                }
+                "exitcode" => {
+                    if let Ok(v) = value.parse::<i64>() {
+                        meta.exit_code = Some(v);
+                    }
+                }
+                "status" => {
+                    meta.verdict = Some(map_status(value));
+                }
+                _ => {}
             };
         }
     }
@@ -88,14 +85,23 @@ pub fn apply_checker_output(meta: &Meta, checker_output: &str) -> Meta {
 }
 
 pub fn calc_overall_verdict(judge_output: &mut JudgeOutput) {
-    judge_output.time = judge_output.testcases.iter().map(|t| t.time).fold(-1. / 0., f64::max);
-    judge_output.memory = judge_output.testcases.iter().map(|t| t.memory).fold(std::i64::MIN, i64::max);
-    judge_output.verdict =
-        match judge_output.testcases.iter()
-            .map(|t| &t.verdict)
-            .find(|v| &v[..] != VERDICT_AC)
-        {
-            Some(v) => v.clone(),
-            None => VERDICT_AC.to_string()
-        };
+    judge_output.time = judge_output
+        .testcases
+        .iter()
+        .map(|t| t.time)
+        .fold(-1. / 0., f64::max);
+    judge_output.memory = judge_output
+        .testcases
+        .iter()
+        .map(|t| t.memory)
+        .fold(std::i64::MIN, i64::max);
+    judge_output.verdict = match judge_output
+        .testcases
+        .iter()
+        .map(|t| &t.verdict)
+        .find(|v| &v[..] != VERDICT_AC)
+    {
+        Some(v) => v.clone(),
+        None => VERDICT_AC.to_string(),
+    };
 }

@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-use crate::languages::DynLanguage;
-use std::ffi::OsString;
+use crate::languages::Language;
 use std::clone::Clone;
 use std::default::Default;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
 
 #[derive(Clone)]
 pub struct Sandbox {
@@ -49,47 +49,13 @@ impl Default for ExecuteConfig<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ExecuteError;
-
-impl std::fmt::Display for ExecuteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Execution error.")
-    }
-}
-
-impl std::error::Error for ExecuteError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CompileError;
-
-impl std::fmt::Display for CompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Compile error.")
-    }
-}
-
-impl std::error::Error for CompileError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
 pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>> {
     // Ensure that there is no sandbox already created.
     cleanup_sandbox(box_id)?;
 
     let box_id_flag = format!("--box-id={}", box_id);
     let process = Command::new("isolate")
-        .args(&[
-            "--cg",
-            "--init",
-            &box_id_flag[..],
-        ])
+        .args(&["--cg", "--init", &box_id_flag[..]])
         .output()?;
 
     let sandbox_path = String::from_utf8_lossy(&process.stdout).trim().to_string();
@@ -105,11 +71,7 @@ pub fn create_sandbox(box_id: i32) -> Result<Sandbox, Box<dyn std::error::Error>
 pub fn cleanup_sandbox(box_id: i32) -> Result<(), Box<dyn std::error::Error>> {
     let box_id_flag = format!("--box-id={}", box_id);
     let process = Command::new("isolate")
-        .args(&[
-            "--cg",
-            "--cleanup",
-            &box_id_flag[..],
-        ])
+        .args(&["--cg", "--cleanup", &box_id_flag[..]])
         .output()?;
 
     assert!(process.status.success(), true);
@@ -118,7 +80,11 @@ pub fn cleanup_sandbox(box_id: i32) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+pub fn execute(
+    sb: &Sandbox,
+    config: &ExecuteConfig,
+    command: &[&str],
+) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     let box_id_flag = format!("--box-id={}", sb.id);
     let wall_time_flag = format!("--wall-time={}", config.wall_time_limit);
     let time_flag = format!("--time={}", config.time_limit);
@@ -158,8 +124,12 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
         args.push(&meta_flag);
     }
 
-    if config.full_env { args.push("--full-env"); }
-    if config.unlimited_processes { args.push("--processes=0"); }
+    if config.full_env {
+        args.push("--full-env");
+    }
+    if config.unlimited_processes {
+        args.push("--processes=0");
+    }
 
     if let Some(additional_flags) = &config.additional_flags {
         for &flag in additional_flags {
@@ -185,62 +155,90 @@ pub fn execute(sb: &Sandbox, config: &ExecuteConfig, command: &[&str]) -> Result
     Ok(output)
 }
 
-pub fn compile(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, source: &str, destination: &str) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+pub fn compile(
+    sb: &Sandbox,
+    language: &Language,
+    config: &ExecuteConfig,
+    source: &str,
+    destination: &str,
+) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.compile(source, destination);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
 
     let mut additional_flags = vec![];
     if let Some(flags) = &config.additional_flags {
-        for &flag in flags { additional_flags.push(flag); }
+        for &flag in flags {
+            additional_flags.push(flag);
+        }
     }
     if let Some(flags) = &language.compile_flags {
-        for flag in flags { additional_flags.push(flag); }
+        for flag in flags {
+            additional_flags.push(flag);
+        }
     }
-    let additional_flags =
-        if additional_flags.is_empty() { None } else { Some(additional_flags) };
+    let additional_flags = if additional_flags.is_empty() {
+        None
+    } else {
+        Some(additional_flags)
+    };
 
     let config = ExecuteConfig {
         additional_flags,
         ..config.clone()
     };
 
-    let output = execute(
-        &sb,
-        &config,
-        &flags_str,
-    )?;
+    let output = execute(&sb, &config, &flags_str)?;
 
-    log::trace!("Compiled {} [{}] from {}.", destination, language.code, source);
-    log::trace!("  Compile stdout: {}", String::from_utf8_lossy(&output.stdout));
-    log::trace!("  Compile stderr: {}", String::from_utf8_lossy(&output.stderr));
+    log::trace!(
+        "Compiled {} [{}] from {}.",
+        destination,
+        language.code,
+        source
+    );
+    log::trace!(
+        "  Compile stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    log::trace!(
+        "  Compile stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     Ok(output)
 }
 
-pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executable: &str) -> Result<Output, Box<dyn std::error::Error>> {
+pub fn run(
+    sb: &Sandbox,
+    language: &Language,
+    config: &ExecuteConfig,
+    executable: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let flags: Vec<String> = language.execute(executable);
     let flags_str: Vec<&str> = flags.iter().map(|s| &s[..]).collect();
 
     let mut additional_flags = vec![];
     if let Some(flags) = &config.additional_flags {
-        for &flag in flags { additional_flags.push(flag); }
+        for &flag in flags {
+            additional_flags.push(flag);
+        }
     }
     if let Some(flags) = &language.execute_flags {
-        for flag in flags { additional_flags.push(flag); }
+        for flag in flags {
+            additional_flags.push(flag);
+        }
     }
-    let additional_flags =
-        if additional_flags.is_empty() { None } else { Some(additional_flags) };
+    let additional_flags = if additional_flags.is_empty() {
+        None
+    } else {
+        Some(additional_flags)
+    };
 
     let config = ExecuteConfig {
         additional_flags,
         ..config.clone()
     };
 
-    let output = execute(
-        &sb,
-        &config,
-        &flags_str,
-    )?;
+    let output = execute(&sb, &config, &flags_str)?;
 
     log::trace!("Run {} [{}] finished.", executable, language.code);
     log::trace!("  Run stdout: {}", String::from_utf8_lossy(&output.stdout));
@@ -251,7 +249,11 @@ pub fn run(sb: &Sandbox, language: &DynLanguage, config: &ExecuteConfig, executa
 
 /// Copy a file from outside the sandbox to inside the sandbox.
 /// The destination is relative to the 'box' folder in the sandbox.
-pub fn copy_into(sb: &Sandbox, source: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn copy_into(
+    sb: &Sandbox,
+    source: &str,
+    destination: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let source_pathbuf = Path::new(source);
     let source_path = source_pathbuf.to_str().unwrap();
 
@@ -259,13 +261,22 @@ pub fn copy_into(sb: &Sandbox, source: &str, destination: &str) -> Result<(), Bo
     let destination_path = destination_pathbuf.to_str().unwrap();
 
     std::fs::copy(source_path, destination_path)?;
-    log::trace!("Copied (into sandbox) {} to {}.", source_path, destination_path);
+    log::trace!(
+        "Copied (into sandbox) {} to {}.",
+        source_path,
+        destination_path
+    );
 
     Ok(())
 }
 
 /// Copy a file from a sandbox to another or the same sandbox.
-pub fn copy_between(sb_source: &Sandbox, sb_destination: &Sandbox, source: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn copy_between(
+    sb_source: &Sandbox,
+    sb_destination: &Sandbox,
+    source: &str,
+    destination: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let source_pathbuf = sb_source.path.join("box").join(source);
     let source_path = source_pathbuf.to_str().unwrap();
 
@@ -273,7 +284,11 @@ pub fn copy_between(sb_source: &Sandbox, sb_destination: &Sandbox, source: &str,
     let destination_path = destination_pathbuf.to_str().unwrap();
 
     std::fs::copy(source_path, destination_path)?;
-    log::trace!("Copied (between sandbox) {} to {}.", source_path, destination_path);
+    log::trace!(
+        "Copied (between sandbox) {} to {}.",
+        source_path,
+        destination_path
+    );
 
     Ok(())
 }
