@@ -13,21 +13,6 @@ impl std::error::Error for ExecuteError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CompileError;
-
-impl std::fmt::Display for CompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Compile error.")
-    }
-}
-
-impl std::error::Error for CompileError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
 /// This is an error in the user's option passed to the program. The process cannot be continued in this case.
 #[derive(Debug, Clone)]
 pub struct OptionError {

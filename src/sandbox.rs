@@ -255,17 +255,14 @@ impl Sandbox {
         source: &str,
         destination: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let source_pathbuf = Path::new(source);
-        let source_path = source_pathbuf.to_str().unwrap();
+        let source_path = Path::new(source);
+        let destination_path = self.path.join("box").join(destination);
 
-        let destination_pathbuf = self.path.join("box").join(destination);
-        let destination_path = destination_pathbuf.to_str().unwrap();
-
-        std::fs::copy(source_path, destination_path)?;
+        std::fs::copy(&source_path, &destination_path)?;
         log::trace!(
-            "Copied (into sandbox) {} to {}.",
-            source_path,
-            destination_path
+            "Copied (into sandbox) {:?} to {:?}.",
+            &source_path,
+            &destination_path,
         );
 
         Ok(())
@@ -278,17 +275,14 @@ impl Sandbox {
         source: &str,
         destination: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let source_pathbuf = self.path.join("box").join(source);
-        let source_path = source_pathbuf.to_str().unwrap();
+        let source_path = self.path.join("box").join(source);
+        let destination_path = sb_destination.path.join("box").join(destination);
 
-        let destination_pathbuf = sb_destination.path.join("box").join(destination);
-        let destination_path = destination_pathbuf.to_str().unwrap();
-
-        std::fs::copy(source_path, destination_path)?;
+        std::fs::copy(&source_path, &destination_path)?;
         log::trace!(
-            "Copied (between sandbox) {} to {}.",
-            source_path,
-            destination_path
+            "Copied (between sandbox) {:?} to {:?}.",
+            &source_path,
+            &destination_path
         );
 
         Ok(())

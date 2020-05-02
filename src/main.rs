@@ -6,14 +6,15 @@ mod judge;
 mod languages;
 mod precheck;
 mod sandbox;
+mod state;
 
 use clap::derive::Clap;
 use cli::*;
-use error::CompileError;
 use judge::TestcaseOutput;
 use languages::Language;
 use sandbox::Sandbox;
 use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
+use state::AppState;
 use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -191,9 +192,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Copy the compiled binaries to other sandboxes.
     for sb_sub in sandboxes.iter().skip(1) {
-        sandbox_primary.copy_between(&sb_sub, "checker", "checker")?;
-        sandbox_primary.copy_between(&sb_sub, &executable_file, &executable_file)?;
+        sandbox_primary.copy_across_sandbox(&sb_sub, "checker", "checker")?;
+        sandbox_primary.copy_across_sandbox(&sb_sub, &executable_file, &executable_file)?;
     }
+
+    let state = Arc::new(AppState {
+        opts: opts.clone(), 
+        metadata: metadata.clone(),
+        judge_output: judge_output.clone(),
+        testcases_stack: testcases_stack.clone(),
+        socket: match &socket {
+            Some(s) => Some(s.clone()),
+            None => None,
+        },
+    });
 
     // Launch the judge threads.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
@@ -201,25 +213,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Clone the variables to be passed into the thread.
         let thread_id = thread_id;
         let thread_sb = thread_sb.clone();
-        let opts = opts.clone();
-        let metadata = metadata.clone();
-        let judge_output = judge_output.clone();
-        let testcases_stack = testcases_stack.clone();
-        let socket = match &socket {
-            Some(s) => Some(s.clone()),
-            None => None,
-        };
+        let state = state.clone();
 
         let thread = thread::spawn(move || {
-            judge_thread(
-                thread_id,
-                thread_sb,
-                socket,
-                opts,
-                metadata,
-                judge_output,
-                testcases_stack,
-            );
+            judge_thread(thread_id, thread_sb, state);
         });
 
         threads.push(thread);
@@ -276,26 +273,26 @@ fn flush_verdict(
     Ok(())
 }
 
-fn judge_thread(
-    thread_id: usize,
-    thread_sb: sandbox::Sandbox,
-    socket: Option<Arc<Mutex<zmq::Socket>>>,
-    opts: Opts,
-    metadata: Metadata,
-    judge_output: Arc<Mutex<judge::JudgeOutput>>,
-    testcases_stack: Arc<Mutex<Vec<Testcase>>>,
-) {
+fn judge_thread(thread_id: usize, thread_sb: sandbox::Sandbox, state: Arc<AppState>) {
     log::debug!(
         "Thread {} spawned. Sandbox at {}.",
         thread_id,
         &thread_sb.path.to_str().unwrap()
     );
 
+    let AppState {
+        opts,
+        metadata,
+        judge_output,
+        testcases_stack,
+        ..
+    } = state.as_ref();
+
     let source_language = cli::detect_language(&opts.language, &opts.languages_definition).unwrap();
     let executable_file = &source_language.executable_filename;
 
     loop {
-        let testcase: Option<Testcase> = testcases_stack.lock().unwrap().pop();
+        let testcase: Option<Testcase> = state.testcases_stack.lock().unwrap().pop();
 
         if testcase.is_none() {
             log::debug!("Thread {} finds no test cases and terminates.", thread_id);
@@ -328,7 +325,7 @@ fn judge_thread(
                 testcase_output.memory,
             );
 
-            if let Some(socket) = &socket {
+            if let Some(socket) = &state.socket {
                 let socket = socket.lock().unwrap();
                 let testcase_json = serde_json::to_string(
                     communications::UpdateEvent::<TestcaseOutput> {
