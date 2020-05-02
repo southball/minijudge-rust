@@ -12,6 +12,7 @@ use cli::*;
 use error::CompileError;
 use judge::TestcaseOutput;
 use languages::Language;
+use sandbox::Sandbox;
 use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
 use std::borrow::Borrow;
 use std::path::PathBuf;
@@ -82,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         verdict: judge::VERDICT_WJ.to_string(),
         time: 0.0,
         memory: 0,
+        compile_message: "".into(),
         testcases: vec![
             judge::TestcaseOutput {
                 verdict: judge::VERDICT_WJ.to_string(),
@@ -100,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sandboxes = Vec::new();
 
     for i in 0..sandbox_count {
-        sandboxes.push(sandbox::create_sandbox(i)?);
+        sandboxes.push(Sandbox::create(i)?);
     }
 
     let sandbox_primary = &sandboxes[0];
@@ -109,21 +111,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source_file = &source_language.source_filename;
     let executable_file = &source_language.executable_filename;
 
-    sandbox::copy_into(sandbox_primary, &opts.source, &source_file)?;
-    let result = compile_source(
+    sandbox_primary.copy_into(&opts.source, &source_file)?;
+    let result = match compile_source(
         sandbox_primary,
         &source_language,
         &metadata,
         &source_file,
         &executable_file,
-    );
+    ) {
+        Ok(output) => {
+            judge_output.lock().unwrap().compile_message =
+                String::from_utf8_lossy(&output.stderr).to_string();
 
-    if let Err(_) = result {
+            if output.status.success() {
+                Ok(output)
+            } else {
+                // Compile error
+                Err(judge_definitions::verdicts::VERDICT_CE.to_string())
+            }
+        }
+        Err(err) => {
+            log::error!("Unexpected error: {:?}", err);
+            Err(judge_definitions::verdicts::VERDICT_SE.to_string())
+        }
+    };
+
+    if let Err(verdict) = result {
         let mut judge_output = judge_output.lock().unwrap();
-        judge_output.verdict = judge_definitions::verdicts::VERDICT_CE.into();
+        judge_output.verdict = verdict.clone();
         for i in 0..judge_output.testcases.len() {
             judge_output.testcases[i] = judge::TestcaseOutput {
-                verdict: judge_definitions::verdicts::VERDICT_CE.into(),
+                verdict: verdict.clone(),
                 ..judge_output.testcases[i].clone()
             };
         }
@@ -131,24 +149,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    sandbox::copy_into(sandbox_primary, &opts.testlib, "./testlib.h")?;
-    sandbox::copy_into(sandbox_primary, &opts.checker, "./checker.cpp")?;
-    let result = compile_checker(
+    sandbox_primary.copy_into(&opts.testlib, "./testlib.h")?;
+    sandbox_primary.copy_into(&opts.checker, "./checker.cpp")?;
+
+    let result = match compile_checker(
         sandbox_primary,
-        &detect_language("cpp17", &opts.languages_definition).unwrap(),
+        &detect_language(&opts.checker_language, &opts.languages_definition).unwrap(),
         &metadata,
         "checker.cpp",
         "checker",
-    );
+    ) {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(output)
+            } else {
+                log::error!(
+                    "Error when compiling checker:\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                Err(judge_definitions::verdicts::VERDICT_SE.to_string())
+            }
+        }
+        Err(err) => {
+            log::error!("Unexpected error: {:?}", err);
+            Err(judge_definitions::verdicts::VERDICT_SE.to_string())
+        }
+    };
 
-    if let Err(err) = result {
-        println!("{:?}", err);
-
+    if let Err(verdict) = result {
         let mut judge_output = judge_output.lock().unwrap();
-        judge_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
+        judge_output.verdict = verdict.clone();
         for i in 0..judge_output.testcases.len() {
             judge_output.testcases[i] = judge::TestcaseOutput {
-                verdict: judge_definitions::verdicts::VERDICT_SE.into(),
+                verdict: verdict.clone(),
                 ..judge_output.testcases[i].clone()
             };
         }
@@ -158,13 +191,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Copy the compiled binaries to other sandboxes.
     for sb_sub in sandboxes.iter().skip(1) {
-        sandbox::copy_between(&sandbox_primary, &sb_sub, "checker", "checker")?;
-        sandbox::copy_between(
-            &sandbox_primary,
-            &sb_sub,
-            &executable_file,
-            &executable_file,
-        )?;
+        sandbox_primary.copy_between(&sb_sub, "checker", "checker")?;
+        sandbox_primary.copy_between(&sb_sub, &executable_file, &executable_file)?;
     }
 
     // Launch the judge threads.
@@ -278,9 +306,19 @@ fn judge_thread(
         let mut testcase_output: judge::TestcaseOutput =
             judge_output.lock().unwrap().testcases[id].clone();
 
-        /// Output and store the result of the testcase as needed.
+        // Output and store the result of the testcase as needed.
         let finalize_testcase = |testcase_output: &mut judge::TestcaseOutput| {
             judge_output.lock().unwrap().testcases[id] = testcase_output.clone();
+
+            let total_testcases = judge_output.lock().unwrap().testcases.len();
+            let remaining_testcases = testcases_stack.lock().unwrap().len();
+            let processed_testcases = total_testcases - remaining_testcases;
+
+            log::debug!(
+                "Progress: {} processed / {} total",
+                processed_testcases,
+                total_testcases
+            );
             log::debug!("Test {} processing completed by thread {}.", id, thread_id);
             log::debug!(
                 "Test {}: Verdict = {}, Time = {}, Memory = {}",
@@ -304,21 +342,18 @@ fn judge_thread(
             }
         };
 
-        log::debug!("Test {} will be processed by thread {}.", id, thread_id);
-
-        sandbox::copy_into(
-            &thread_sb,
-            PathBuf::from(&opts.testcases)
-                .join(&input)
-                .to_str()
-                .unwrap(),
-            "in.txt",
-        )
-        .unwrap();
+        thread_sb
+            .copy_into(
+                PathBuf::from(&opts.testcases)
+                    .join(&input)
+                    .to_str()
+                    .unwrap(),
+                "in.txt",
+            )
+            .unwrap();
 
         log::trace!("Test {} executing.", id);
-        let execute_result = sandbox::run(
-            &thread_sb,
+        let execute_result = thread_sb.run(
             &source_language,
             &sandbox::ExecuteConfig {
                 memory_limit: metadata.memory_limit,
@@ -336,13 +371,13 @@ fn judge_thread(
         );
         log::trace!("Test {} executed.", id);
 
-        if execute_result.is_err() || sandbox::read_file(&thread_sb, "meta.txt").is_err() {
+        if execute_result.is_err() || thread_sb.read_file("meta.txt").is_err() {
             testcase_output.verdict = judge_definitions::verdicts::VERDICT_SE.into();
             finalize_testcase(&mut testcase_output);
             continue;
         }
 
-        let meta_file = sandbox::read_file(&thread_sb, "meta.txt").unwrap();
+        let meta_file = thread_sb.read_file("meta.txt").unwrap();
         let meta = judge::parse_meta(&meta_file);
 
         if let Some(time) = &meta.time {
@@ -362,20 +397,19 @@ fn judge_thread(
             continue;
         }
 
-        sandbox::copy_into(
-            &thread_sb,
-            PathBuf::from(&opts.testcases)
-                .join(&output)
-                .to_str()
-                .unwrap(),
-            "ans.txt",
-        )
-        .unwrap();
+        thread_sb
+            .copy_into(
+                PathBuf::from(&opts.testcases)
+                    .join(&output)
+                    .to_str()
+                    .unwrap(),
+                "ans.txt",
+            )
+            .unwrap();
         let flags = vec!["checker", "in.txt", "out.txt", "ans.txt"];
 
         log::trace!("Test {} checker executing.", id);
-        let checker_result = sandbox::execute(
-            &thread_sb,
+        let checker_result = thread_sb.execute(
             &sandbox::ExecuteConfig {
                 memory_limit: metadata.checker_memory_limit,
                 time_limit: metadata.checker_time_limit,
@@ -394,7 +428,8 @@ fn judge_thread(
 
         log::trace!("Test {} checker executed.", id);
 
-        let checker_output = sandbox::read_file(&thread_sb, "checker.txt")
+        let checker_output = thread_sb
+            .read_file("checker.txt")
             .unwrap()
             .trim()
             .to_string();
@@ -410,15 +445,15 @@ fn judge_thread(
     }
 }
 
+/// A helper function for compiling the source program.
 fn compile_source(
     sb: &sandbox::Sandbox,
     language: &Language,
     metadata: &Metadata,
     source: &str,
     destination: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let output = sandbox::compile(
-        sb,
+) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+    sb.compile(
         language,
         &sandbox::ExecuteConfig {
             memory_limit: metadata.compile_memory_limit,
@@ -434,24 +469,18 @@ fn compile_source(
         },
         source,
         destination,
-    )?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(Box::new(CompileError {}))
-    }
+    )
 }
 
+/// A helper function for compiling the checker.
 fn compile_checker(
     sb: &sandbox::Sandbox,
     language: &Language,
     metadata: &Metadata,
     source: &str,
     destination: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    sandbox::compile(
-        sb,
+) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+    sb.compile(
         language,
         &sandbox::ExecuteConfig {
             memory_limit: metadata.compile_memory_limit,
@@ -468,7 +497,5 @@ fn compile_checker(
         },
         source,
         destination,
-    )?;
-
-    Ok(())
+    )
 }

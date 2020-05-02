@@ -25,6 +25,10 @@ pub struct Opts {
     #[clap(long = "checker")]
     pub checker: String,
 
+    /// The language code for compiling the checker.
+    #[clap(long = "checker-language")]
+    pub checker_language: String,
+
     /// The path to the source code of interactor. If provided, the problem will be treated as
     /// interactive.
     #[clap(long = "interactor")]
