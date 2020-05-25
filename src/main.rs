@@ -13,7 +13,6 @@ use cli::*;
 use judge::TestcaseOutput;
 use languages::Language;
 use sandbox::Sandbox;
-use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode};
 use state::AppState;
 use std::borrow::Borrow;
 use std::path::PathBuf;
@@ -25,13 +24,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Derive log level from CLI options and construct logger.
     let log_level = cli::calc_log_level(opts.verbosity, opts.quiet);
-    CombinedLogger::init(vec![TermLogger::new(
-        log_level,
-        Config::default(),
-        TerminalMode::Mixed,
-    )
-    .unwrap()])
-    .unwrap();
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{:5}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Error)
+        .level_for("minijudge_rust", log_level)
+        .chain(std::io::stdout())
+        // .chain(fern::log_file("output.log")?)
+        .apply()
+        .unwrap();
 
     debug::debug_opts(&opts);
 
@@ -59,6 +67,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Output metadata to debug log.
     debug::debug_metadata(&metadata);
 
+    // Check that the environment is valid.
+    if let Err(err) = precheck::precheck_env() {
+        log::error!("Error when checking environment: {:?}", err);
+        return Err(err);
+    }
+
     // Check that the files referred to in opts and metadata all exist.
     if let Err(err) = precheck::precheck_opts(&opts) {
         log::error!("Error when checking command line options: {:?}", err);
@@ -69,6 +83,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         log::error!("Error when checking metadata: {:?}", err);
         return Err(err);
     }
+
+    log::info!("Options and metadata are checked.");
 
     // Generate a list of testcases for judge to consume.
     let testcases_stack: Arc<Mutex<Vec<Testcase>>> = Arc::new(Mutex::new(
@@ -197,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let state = Arc::new(AppState {
-        opts: opts.clone(), 
+        opts: opts.clone(),
         metadata: metadata.clone(),
         judge_output: judge_output.clone(),
         testcases_stack: testcases_stack.clone(),

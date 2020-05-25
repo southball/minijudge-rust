@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 clap = { git = "https://github.com/clap-rs/clap/" }
+chrono = "0.4"
+fern = "0.6.0"
 handlebars = "3.0.1"
 judge-definitions = { git = "https://github.com/southball/judge-definitions" }
 log = "0.4"

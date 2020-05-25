@@ -1,7 +1,7 @@
 use crate::languages::Language;
 use clap::Clap;
 use serde::{Deserialize, Serialize};
-use simplelog::LevelFilter;
+use log::LevelFilter;
 
 /// MiniJudge-Rust
 /// A miniature judge written in Rust.
@@ -137,7 +137,8 @@ pub fn calc_log_level(verbosity: i32, quiet: bool) -> LevelFilter {
             0 => LevelFilter::Warn,
             1 => LevelFilter::Info,
             2 => LevelFilter::Debug,
-            _ => LevelFilter::Trace,
+            3 => LevelFilter::Trace,
+            _ => LevelFilter::Error,
         }
     }
 }
